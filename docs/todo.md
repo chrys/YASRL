@@ -267,6 +267,7 @@ Create a document loader system in src/yasrl/loaders.py:
    - Test document loading for different source types
    - Test document ID generation consistency
    - Test error handling for invalid inputs
+   - Do not run the tests. I will do it locally.
 
 Focus on robust source detection and clear error messages for unsupported formats.
 ```
@@ -457,6 +458,7 @@ Create the main RAGPipeline class in src/yasrl/pipeline.py:
    - Test ConfigurationError raising for invalid setups
    - Test component wiring and dependency injection
    - Test logging configuration and output
+   - Do not run the tests. I will do it locally.
 
 Focus on robust initialization with clear error messages and proper resource management.
 ```
@@ -509,6 +511,7 @@ Implement the index method for RAGPipeline in src/yasrl/pipeline.py:
    - Test upsert logic (updating existing documents)
    - Test error handling for various failure scenarios
    - Test batch processing and performance optimizations
+   - Do not run the tests. I will do it locally.
 
 Focus on reliability, performance, and clear progress feedback for the indexing process.
 ```
@@ -565,6 +568,7 @@ Implement the ask method for RAGPipeline in src/yasrl/pipeline.py:
    - Test error handling for empty results and LLM failures
    - Test prompt formatting and token limit handling
    - Verify QueryResult creation and source attribution
+   - Do not run the tests. I will do it locally.
 
 Focus on generating high-quality answers with proper source attribution and conversation context.
 ```
@@ -614,6 +618,7 @@ Complete the RAGPipeline implementation and set up the public API in src/yasrl/_
    - Test pipeline statistics and health checks
    - Test complete integration scenarios
    - Verify public API exports work correctly
+   - Do not run the tests. I will do it locally.
 
 Focus on a clean, intuitive API that handles resource management automatically and provides clear documentation.
 ```
@@ -663,6 +668,7 @@ Create the evaluation framework in src/yasrl/evaluation/base.py:
    - Test error handling for evaluation failures
    - Test result format validation
    - Mock implementations to test interface compliance
+   - Do not run the tests. I will do it locally.
 
 Focus on creating a flexible interface that can support various evaluation libraries and metrics.
 ```
@@ -710,6 +716,7 @@ Create RAGAS evaluator implementation in src/yasrl/evaluation/ragas_evaluator.py
    - Test data format conversion between pipeline and RAGAS
    - Test error handling for RAGAS failures
    - Test batch evaluation and performance optimizations
+   - Do not run the tests. I will do it locally.
 
 Focus on robust integration with RAGAS while maintaining the flexibility of the base evaluation interface.
 ```
@@ -757,6 +764,7 @@ Create evaluation utilities and CLI in src/yasrl/evaluation/cli.py:
    - Test dataset loading and format conversion
    - Test evaluation execution and result generation
    - Test error handling for invalid configurations
+   - Do not run the tests. I will do it locally.
 
 Focus on creating user-friendly tools that make evaluation accessible and automate common evaluation workflows.
 ```
@@ -806,6 +814,7 @@ Create advanced logging and monitoring system in src/yasrl/logging.py:
    - Test performance metric collection
    - Test error logging and context preservation
    - Mock external logging systems for integration tests
+   - Do not run the tests. I will do it locally.
 
 Focus on providing production-ready logging that aids in debugging and monitoring pipeline performance.
 ```
@@ -853,6 +862,7 @@ Create caching system for performance optimization in src/yasrl/cache.py:
    - Test cache invalidation logic
    - Test performance improvements with caching
    - Test memory usage and resource management
+   - Do not run the tests. I will do it locally.
 
 Focus on significant performance improvements while maintaining data consistency and freshness.
 ```
@@ -900,6 +910,7 @@ Create advanced configuration system in src/yasrl/advanced_config.py:
    - Test provider-specific configuration options
    - Test performance setting impacts
    - Test configuration error handling
+   - Do not run the tests. I will do it locally.
 
 Focus on providing flexibility for advanced users while maintaining the simplicity of the basic API.
 ```

@@ -45,7 +45,7 @@ class VectorStoreManager:
             try:
                 self._vector_store = PGVectorStore.from_params(
                     host=self._parsed_uri.hostname,
-                    port=self._parsed_uri.port,
+                    port=5432,
                     database=self._parsed_uri.path.lstrip("/"),
                     user=self._parsed_uri.username,
                     password=self._parsed_uri.password,
@@ -109,9 +109,7 @@ class VectorStoreManager:
             logger.error(f"Failed to set up schema: {e}")
             raise IndexingError(f"Failed to set up schema: {e}") from e
         finally:
-            if self._connection:
-                self._connection.close()
-
+            conn.close()  # Close the connection we got, not self._connection
 
     def upsert_documents(self, document_id: str, chunks: list):
         """
