@@ -28,12 +28,19 @@ class RAGPipeline:
         start_time = perf_counter()
 
         self.config_manager = ConfigurationManager()
+        config = self.config_manager.load_config()
         self._validate_env_vars(llm, embed_model)
 
-        self.llm_provider = LLMProviderFactory.create(llm)
-        self.embedding_provider = EmbeddingProviderFactory.create(embed_model)
+        self.llm_provider = LLMProviderFactory.create_provider(llm, self.config_manager)
+        self.embedding_provider = EmbeddingProviderFactory.create_provider(
+            embed_model, self.config_manager
+        )
 
-        self.db_manager = VectorStoreManager()
+        self.db_manager = VectorStoreManager(
+            postgres_uri= config.database.postgres_uri,
+            vector_dimensions= config.database.vector_dimensions,
+            table_prefix=os.getenv("TABLE_PREFIX", "yasrl"),
+        )
         self.text_processor = TextProcessor(
             chunk_size=int(os.getenv("TEXT_CHUNK_SIZE", 1000))
         )
@@ -53,10 +60,17 @@ class RAGPipeline:
 
     def _validate_env_vars(self, llm: str, embed_model: str):
         """Validates that the required environment variables are set."""
-        required_vars = self.config_manager.get_required_variables(
-            llm, embed_model
-        )
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        config = self.config_manager.load_config()
+        missing_vars = []
+
+        # Example checks (customize as needed for your config structure)
+        if llm == "openai" and not os.getenv("OPENAI_API_KEY"):
+            missing_vars.append("OPENAI_API_KEY")
+        if embed_model == "gemini" and not os.getenv("GOOGLE_API_KEY"):
+            missing_vars.append("GOOGLE_API_KEY")
+        if not config.database.postgres_uri:
+            missing_vars.append("POSTGRES_URI")
+
         if missing_vars:
             raise ConfigurationError(
                 f"Missing required environment variables: {', '.join(missing_vars)}"
@@ -64,8 +78,13 @@ class RAGPipeline:
 
     async def _ainit(self):
         """Asynchronously initializes the database connection."""
-        await self.db_manager.initialize()
-        logger.info("Database connection initialized.")
+        try:
+            conn = self.db_manager._get_connection()
+            conn.close()
+            logger.info("Database connection initialized.")
+        except Exception as e:
+            logger.error(f"Database connection failed: {e}")
+            raise ConfigurationError(f"Database connection failed: {e}")
 
     @classmethod
     async def create(cls, llm: str, embed_model: str) -> "RAGPipeline":
@@ -76,8 +95,9 @@ class RAGPipeline:
 
     async def close(self):
         """Closes the database connection."""
-        await self.db_manager.close()
-        logger.info("Database connection closed.")
+        if hasattr(self.db_manager, "_connection") and self.db_manager._connection:
+            self.db_manager._connection.close()
+            logger.info("Database connection closed.")
 
     async def __aenter__(self):
         await self._ainit()
