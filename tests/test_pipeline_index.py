@@ -53,6 +53,8 @@ class TestRAGPipelineIndex(unittest.TestCase):
             mock_embedding_provider = MagicMock()
             mock_embedding_provider.get_embedding_model.return_value.get_text_embedding_batch = AsyncMock(return_value=[[1.0]])
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            # Fix: Make db_manager.ainit awaitable
+            MockVectorStoreManager.return_value.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
             pipeline.db_manager = MockVectorStoreManager.return_value
             asyncio.run(pipeline.index("dummy/path/to/file.txt"))
@@ -104,6 +106,8 @@ class TestRAGPipelineIndex(unittest.TestCase):
             mock_embedding_provider = MagicMock()
             mock_embedding_provider.get_embedding_model.return_value.get_text_embedding_batch = AsyncMock(side_effect=[[[1.0]], [[2.0]]])
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            # Fix: Make db_manager.ainit awaitable
+            MockVectorStoreManager.return_value.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
             pipeline.db_manager = MockVectorStoreManager.return_value
             asyncio.run(pipeline.index("dummy/directory"))
@@ -151,6 +155,8 @@ class TestRAGPipelineIndex(unittest.TestCase):
             mock_embedding_provider = MagicMock()
             mock_embedding_provider.get_embedding_model.return_value.get_text_embedding_batch = AsyncMock(return_value=[[1.0]])
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            # Fix: Make db_manager.ainit awaitable
+            MockVectorStoreManager.return_value.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
             pipeline.db_manager = MockVectorStoreManager.return_value
             asyncio.run(pipeline.index("http://example.com"))
@@ -162,7 +168,8 @@ class TestRAGPipelineIndex(unittest.TestCase):
             chunk = call_args.kwargs['chunks'][0]
             self.assertEqual(chunk.text, "chunk1")
             self.assertEqual(chunk.embedding, [1.0])
-
+    
+    
     @patch("yasrl.pipeline.ConfigurationManager")
     @patch("yasrl.pipeline.DocumentLoader")
     @patch("yasrl.pipeline.EmbeddingProviderFactory")
@@ -198,6 +205,8 @@ class TestRAGPipelineIndex(unittest.TestCase):
             mock_embedding_provider = MagicMock()
             mock_embedding_provider.get_embedding_model.return_value.get_text_embedding_batch = AsyncMock(return_value=[[1.0]])
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            # Fix: Make db_manager.ainit awaitable
+            MockVectorStoreManager.return_value.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
             pipeline.db_manager = MockVectorStoreManager.return_value
             asyncio.run(pipeline.index("dummy/path/to/file.txt"))
@@ -249,6 +258,8 @@ class TestRAGPipelineIndex(unittest.TestCase):
                 return_value=[[1.0], [2.0], [3.0]]
             )
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            # Fix: Make db_manager.ainit awaitable
+            MockVectorStoreManager.return_value.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
             pipeline.db_manager = MockVectorStoreManager.return_value
             asyncio.run(pipeline.index("dummy/path/to/large_file.txt"))

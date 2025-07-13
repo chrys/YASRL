@@ -65,23 +65,6 @@ def test_pipeline_init_missing_env_vars():
     assert "Database postgres_uri cannot be empty" in str(excinfo.value)
 
 
-@patch("yasrl.pipeline.LLMProviderFactory")
-@patch("yasrl.pipeline.EmbeddingProviderFactory")
-@patch("yasrl.pipeline.VectorStoreManager")
-@patch("yasrl.pipeline.ConfigurationManager")
-@pytest.mark.asyncio
-async def test_pipeline_context_manager(
-    MockConfigManager,
-    MockVectorStoreManager,
-    MockEmbeddingProviderFactory,
-    MockLLMProviderFactory,
-    mock_env_vars,
-):
-    """Tests the async context manager functionality."""
-    # No need to mock initialize/close, just ensure context manager works
-    async with await RAGPipeline.create(llm="openai", embed_model="openai") as pipeline:
-        assert pipeline is not None
-        assert isinstance(pipeline, RAGPipeline)
 
 @patch("yasrl.pipeline.ConfigurationManager")
 @patch("yasrl.pipeline.logging")

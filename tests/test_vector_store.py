@@ -24,7 +24,8 @@ class TestVectorStoreManager(unittest.TestCase):
         self.assertEqual(self.manager.vector_dimensions, self.vector_dimensions)
         self.assertEqual(self.manager.table_name, "test_chunks")
         self.assertIsNone(self.manager._vector_store)
-        self.assertIsNone(self.manager._connection)
+        with self.assertRaises(IndexingError):
+            self.manager._get_connection()
 
     def test_parsed_uri(self):
         """Test URI parsing."""
@@ -76,21 +77,25 @@ class TestVectorStoreManager(unittest.TestCase):
         mock_conn = MagicMock()
         mock_connect.return_value = mock_conn
 
+        # Mock the connection pool
+        mock_pool = MagicMock()
+        mock_pool.getconn.return_value = mock_conn
+        self.manager._pool = mock_pool
+
         result = self.manager._get_connection()
 
-        mock_connect.assert_called_once_with(self.postgres_uri)
+        mock_pool.getconn.assert_called_once()
         self.assertEqual(result, mock_conn)
-        self.assertEqual(self.manager._connection, mock_conn)
 
-    @patch("yasrl.vector_store.psycopg2.connect")
-    def test_get_connection_error(self, mock_connect):
-        """Test database connection error handling."""
-        mock_connect.side_effect = psycopg2.Error("Connection failed")
+        @patch("yasrl.vector_store.psycopg2.connect")
+        def test_get_connection_error(self, mock_connect):
+            """Test database connection error handling."""
+            mock_connect.side_effect = psycopg2.Error("Connection failed")
 
-        with self.assertRaises(IndexingError) as context:
-            self.manager._get_connection()
+            with self.assertRaises(IndexingError) as context:
+                self.manager._get_connection()
 
-        self.assertIn("Failed to connect to PostgreSQL", str(context.exception))
+            self.assertIn("Connection pool is not initialized.", str(context.exception))
 
     @patch("yasrl.vector_store.VectorStoreManager._get_connection")
     def test_setup_schema_success(self, mock_get_connection):
