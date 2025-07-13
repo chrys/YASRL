@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 import psycopg2
 from llama_index.vector_stores.postgres import PGVectorStore
 from psycopg2.extensions import connection
+from psycopg2.pool import SimpleConnectionPool
 
 from yasrl.exceptions import IndexingError, RetrievalError
 
@@ -34,7 +35,27 @@ class VectorStoreManager:
         self.vector_dimensions = vector_dimensions
         self.table_name = f"{table_prefix}_chunks"
         self._vector_store: Optional[PGVectorStore] = None
-        self._connection: Optional[connection] = None
+        self._pool: Optional[SimpleConnectionPool] = None
+
+    async def ainit(self):
+        """Asynchronously initializes the connection pool."""
+        logger.info("Initializing connection pool...")
+        try:
+            self._pool = SimpleConnectionPool(
+                minconn=1,
+                maxconn=10,
+                dsn=self.postgres_uri,
+            )
+            logger.info("Connection pool initialized.")
+        except psycopg2.Error as e:
+            logger.error(f"Failed to initialize connection pool: {e}")
+            raise IndexingError(f"Failed to initialize connection pool: {e}") from e
+
+    async def close(self):
+        """Closes the connection pool."""
+        if self._pool:
+            self._pool.closeall()
+            logger.info("Connection pool closed.")
 
     @property
     def vector_store(self) -> PGVectorStore:
@@ -66,14 +87,47 @@ class VectorStoreManager:
 
     def _get_connection(self) -> connection:
         """
-        Establishes a connection to the PostgreSQL database.
+        Gets a connection from the pool.
         """
+        if not self._pool:
+            raise IndexingError("Connection pool is not initialized.")
+        return self._pool.getconn()
+
+    def _release_connection(self, conn: connection):
+        """
+        Releases a connection back to the pool.
+        """
+        if self._pool:
+            self._pool.putconn(conn)
+
+    async def check_connection(self) -> bool:
+        """
+        Checks if a connection can be established to the database.
+        """
+        conn = None
         try:
-            self._connection = psycopg2.connect(self.postgres_uri)
+            conn = self._get_connection()
+            return conn is not None
+        except Exception:
+            return False
+        finally:
+            if conn:
+                self._release_connection(conn)
+
+    async def get_document_count(self) -> int:
+        """
+        Gets the number of indexed documents.
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SELECT COUNT(DISTINCT document_id) FROM {self.table_name}")
+                return cursor.fetchone()[0]
         except psycopg2.Error as e:
-            logger.error(f"Failed to connect to PostgreSQL: {e}")
-            raise IndexingError(f"Failed to connect to PostgreSQL: {e}") from e
-        return self._connection
+            logger.error(f"Failed to get document count: {e}")
+            return 0
+        finally:
+            self._release_connection(conn)
 
     def setup_schema(self):
         """
@@ -109,7 +163,7 @@ class VectorStoreManager:
             logger.error(f"Failed to set up schema: {e}")
             raise IndexingError(f"Failed to set up schema: {e}") from e
         finally:
-            conn.close()  # Close the connection we got, not self._connection
+            self._release_connection(conn)
 
     def upsert_documents(self, document_id: str, chunks: list):
         """
@@ -135,6 +189,8 @@ class VectorStoreManager:
             conn.rollback()
             logger.error(f"Failed to upsert document: {e}")
             raise IndexingError(f"Failed to upsert document: {e}") from e
+        finally:
+            self._release_connection(conn)
 
     def retrieve_chunks(self, query_embedding: List[float], top_k: int = 10) -> list:
         """
@@ -174,3 +230,5 @@ class VectorStoreManager:
             conn.rollback()
             logger.error(f"Failed to delete document: {e}")
             raise IndexingError(f"Failed to delete document: {e}") from e
+        finally:
+            self._release_connection(conn)

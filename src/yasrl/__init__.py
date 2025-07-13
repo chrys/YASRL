@@ -1,16 +1,25 @@
+"""
+YasRL: A lightweight, extensible, and scalable RAG framework.
+"""
+
 __version__ = "0.1.0"
 
-# Public API imports (update these as you implement the modules)
-# from .pipeline import RAGPipeline
+from .pipeline import RAGPipeline
 from .models import QueryResult, SourceChunk
-# from .exceptions import yasrlError, ConfigurationError, IndexingError, RetrievalError, EvaluationError
+from .exceptions import (
+    yasrlError,
+    ConfigurationError,
+    IndexingError,
+    RetrievalError,
+)
 
 __all__ = [
     "__version__",
-    # "RAGPipeline",
+    "RAGPipeline",
     "QueryResult",
     "SourceChunk",
-    # "yasrlError",
-    # "ConfigurationError",
-    # "IndexingError",
+    "yasrlError",
+    "ConfigurationError",
+    "IndexingError",
+    "RetrievalError",
 ]
