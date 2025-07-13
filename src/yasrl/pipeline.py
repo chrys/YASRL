@@ -5,7 +5,8 @@ from time import perf_counter
 from typing import Optional
 
 from .config.manager import ConfigurationManager
-from .exceptions import ConfigurationError
+from .exceptions import ConfigurationError, IndexingError
+from .loaders import DocumentLoader
 from .providers.embeddings import EmbeddingProviderFactory
 from .providers.llm import LLMProviderFactory
 from .text_processor import TextProcessor
@@ -105,3 +106,58 @@ class RAGPipeline:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.close()
+
+    async def index(self, source: str | list[str]) -> None:
+        """
+        Indexes documents from a source, handling upserts and batching.
+
+        Args:
+            source: The source to index (file, directory, URL, or list of URLs).
+        """
+        logger.info(f"Starting indexing process for source: {source}")
+        start_time = perf_counter()
+        document_loader = DocumentLoader()
+
+        try:
+            documents = document_loader.load_documents(source)
+            if not documents:
+                logger.warning(f"No documents found for source: {source}")
+                return
+        except IndexingError as e:
+            logger.error(f"Failed to load documents from source: {source}. Error: {e}")
+            return
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during document loading: {e}")
+            return
+
+        total_docs = len(documents)
+        for i, doc in enumerate(documents):
+            doc_id = doc.id_ or document_loader.generate_document_id(
+                doc.metadata.get("file_path") or doc.metadata.get("extra_info", {}).get("Source", "")
+            )
+            logger.info(f"Processing document {i + 1}/{total_docs}: {doc_id}")
+
+            try:
+                # Process the document into chunks
+                nodes = self.text_processor.process_documents([doc])
+
+                # Generate embeddings for the chunks
+                texts = [node.text for node in nodes]
+                embeddings = await self.embedding_provider.get_embedding_model().get_text_embedding_batch(texts)
+
+                for node, embedding in zip(nodes, embeddings):
+                    node.embedding = embedding
+
+                # Upsert the chunks into the vector store
+                self.db_manager.upsert_documents(document_id=doc_id, chunks=nodes)
+                logger.info(f"Successfully indexed document: {doc_id}")
+
+            except Exception as e:
+                logger.error(f"Failed to process document {doc_id}. Error: {e}")
+                # Continue processing other documents
+
+        end_time = perf_counter()
+        logger.info(
+            f"Indexing completed in {end_time - start_time:.2f} seconds. "
+            f"Processed {total_docs} documents."
+        )
