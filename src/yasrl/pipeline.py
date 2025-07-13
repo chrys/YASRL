@@ -11,6 +11,8 @@ from .providers.embeddings import EmbeddingProviderFactory
 from .providers.llm import LLMProviderFactory
 from .text_processor import TextProcessor
 from .vector_store import VectorStoreManager
+from .query_processor import QueryProcessor
+from .models import QueryResult
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +40,18 @@ class RAGPipeline:
         )
 
         self.db_manager = VectorStoreManager(
-            postgres_uri= config.database.postgres_uri,
-            vector_dimensions= config.database.vector_dimensions,
+            postgres_uri=config.database.postgres_uri,
+            vector_dimensions=config.database.vector_dimensions,
             table_prefix=os.getenv("TABLE_PREFIX", "yasrl"),
         )
         self.text_processor = TextProcessor(
             chunk_size=int(os.getenv("TEXT_CHUNK_SIZE", 1000))
         )
-        # self.query_processor = QueryProcessor(self.llm_provider, self.db_manager) # QueryProcessor is not defined yet
+
+        self.query_processor = QueryProcessor(
+            embedding_provider=self.embedding_provider,
+            db_manager=self.db_manager,
+        )
 
         end_time = perf_counter()
         logger.info(
@@ -166,3 +172,75 @@ class RAGPipeline:
             f"Indexing completed in {end_time - start_time:.2f} seconds. "
             f"Processed {total_docs} documents."
         )
+
+    async def ask(self, query: str, conversation_history: list[dict] | None = None) -> QueryResult:
+        """
+        Asks a question to the RAG pipeline.
+
+        Args:
+            query: The question to ask.
+            conversation_history: A list of previous conversation turns.
+
+        Returns:
+            A QueryResult object containing the answer and source chunks.
+        """
+        if not query:
+            raise ValueError("Query cannot be empty.")
+
+        source_chunks = await self.query_processor.process_query(query)
+
+        prompt = self._format_prompt(query, source_chunks, conversation_history)
+
+        try:
+            # Limit conversation history to the last 5 turns to avoid exceeding token limits
+            if conversation_history and len(conversation_history) > 5:
+                conversation_history = conversation_history[-5:]
+
+            response = await self.llm_provider.get_llm().achat(prompt)
+            answer = response.message.content
+
+            if not answer:
+                raise ValueError("LLM returned an empty response.")
+
+        except Exception as e:
+            logger.error(f"Error getting response from LLM: {e}")
+            return QueryResult(answer="Error getting response from LLM.", source_chunks=[])
+
+        return QueryResult(answer=answer, source_chunks=source_chunks)
+
+    def _format_prompt(self, query: str, context: list, conversation_history: list[dict] | None = None) -> str:
+        """
+        Formats the prompt for the LLM.
+        """
+        system_message = (
+            "You are a helpful AI assistant. Answer the user's query based on the "
+            "provided context. If the context does not contain the answer, say so. "
+            "Cite the sources used to answer the query by adding [Source X] to the end of the sentence, where X is the number of the source."
+        )
+
+        history_str = ""
+        if conversation_history:
+            for turn in conversation_history:
+                history_str += f"{turn['role']}: {turn['content']}\n"
+
+        context_str = ""
+        if context:
+            for i, chunk in enumerate(context):
+                source = chunk.metadata.get("source", "Unknown")
+                context_str += f"Source {i+1} ({source}): {chunk.text}\n\n"
+        else:
+            context_str = "No context provided."
+
+
+        prompt = f"""
+        {system_message}
+
+        Conversation History:
+        {history_str}
+
+        Context:
+        {context_str}
+
+        Query: {query}
+        """
+        return prompt
