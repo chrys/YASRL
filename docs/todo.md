@@ -770,7 +770,7 @@ Create evaluation utilities and CLI in src/yasrl/evaluation/cli.py:
 Focus on creating user-friendly tools that make evaluation accessible and automate common evaluation workflows.
 ```
 
-## Phase 6: Advanced Features and Optimization
+## Phase 2 Phase 6: Advanced Features and Optimization
 
 ### Step 6.1: Logging and Monitoring System
 
