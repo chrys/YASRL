@@ -1,6 +1,13 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+
+@dataclass(frozen=True)
+class Node:
+    text: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class SourceChunk:
     """
