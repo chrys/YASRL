@@ -365,7 +365,7 @@ Create text processing system in src/yasrl/text_processor.py:
 Focus on intelligent chunking that preserves context while optimizing for retrieval quality.
 ```
 
-### Step 3.3: Query Processing and Re-ranking
+### Phase 2 -> Step 3.3: Query Processing and Re-ranking
 
 **Objective**: Implement query processing with retrieval and re-ranking capabilities.
 
@@ -422,11 +422,12 @@ Create the main RAGPipeline class in src/yasrl/pipeline.py:
 
 1. Implement RAGPipeline class __init__ method:
    - Accept llm: str and embed_model: str parameters
-   - Initialize ConfigManager and validate required environment variables
+   - Initialize ConfigurationManager and validate required environment variables
    - Create LLM and embedding providers using the factory classes
    - Initialize VectorStoreManager with PostgreSQL connection
    - Set up TextProcessor with appropriate chunk size
-   - Initialize QueryProcessor with re-ranking capabilities
+   - Initialize QueryProcessor.
+   - Do not implement re-ranking capabilities. This will be done in phase2.
    - Set up logging with configurable levels
 
 2. Class structure and dependencies:
@@ -516,61 +517,7 @@ Implement the index method for RAGPipeline in src/yasrl/pipeline.py:
 Focus on reliability, performance, and clear progress feedback for the indexing process.
 ```
 
-### Step 4.3: RAGPipeline Ask Method Implementation
-
-**Objective**: Implement the query processing and answer generation functionality.
-
-```
-Implement the ask method for RAGPipeline in src/yasrl/pipeline.py:
-
-1. Add the async ask method to RAGPipeline:
-   - Signature: async def ask(self, query: str, conversation_history: list[dict] | None = None) -> QueryResult
-   - Use QueryProcessor to retrieve relevant chunks
-   - Format prompt with conversation history and retrieved context
-   - Generate answer using configured LLM
-   - Return QueryResult with answer and source chunks
-
-2. Query processing workflow:
-   - Validate input query is not empty
-   - Process query through QueryProcessor to get relevant chunks
-   - Apply re-ranking to improve chunk relevance
-   - Construct context from top-ranked chunks
-   - Format conversation history if provided
-   - Build comprehensive prompt for LLM
-
-3. Prompt template design:
-   - Create effective prompt template that includes:
-     * Clear instruction for the AI assistant
-     * Conversation history (if provided)
-     * Retrieved context chunks with source attribution
-     * Current user query
-     * Instructions for citing sources
-   - Ensure prompt fits within LLM context limits
-   - Handle cases with no relevant chunks found
-
-4. LLM interaction and response processing:
-   - Send formatted prompt to configured LLM
-   - Handle LLM API errors gracefully
-   - Parse and validate LLM response
-   - Extract answer and maintain source attribution
-   - Create QueryResult with answer and source chunks
-
-5. Conversation history handling:
-   - Accept conversation history in standardized format
-   - Integrate previous context appropriately
-   - Limit conversation history to stay within token limits
-   - Maintain conversation flow and context
-
-6. Unit tests in tests/test_pipeline_ask.py:
-   - Mock QueryProcessor, LLM provider, and all dependencies
-   - Test successful query processing with various scenarios
-   - Test conversation history integration
-   - Test error handling for empty results and LLM failures
-   - Test prompt formatting and token limit handling
-   - Verify QueryResult creation and source attribution
-   - Do not run the tests. I will do it locally.
-
-Focus on generating high-quality answers with proper source attribution and conversation context.
+### F
 ```
 
 ### Step 4.4: Pipeline Integration and Public API

@@ -146,7 +146,12 @@ class RAGPipeline:
                 embeddings = await self.embedding_provider.get_embedding_model().get_text_embedding_batch(texts)
 
                 for node, embedding in zip(nodes, embeddings):
-                    node.embedding = embedding
+                    if hasattr(node, "set_embedding"):
+                        node.set_embedding(embedding)
+                    elif hasattr(node, "with_embedding"):
+                        node = node.with_embedding(embedding)
+                    else:
+                        logger.warning(f"Cannot set embedding for node: {getattr(node, 'id_', None)} (read-only attribute)")
 
                 # Upsert the chunks into the vector store
                 self.db_manager.upsert_documents(document_id=doc_id, chunks=nodes)

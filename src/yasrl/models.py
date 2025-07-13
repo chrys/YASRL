@@ -6,6 +6,24 @@ from typing import Any, Dict, List, Optional
 class Node:
     text: str
     metadata: Dict[str, Any] = field(default_factory=dict)
+    embedding: Optional[List[float]] = None
+    
+    def set_embedding(self, embedding: List[float]) -> "Node":
+        """
+        Returns a new Node with the given embedding.
+        (Since the class is frozen, we cannot mutate in place.)
+        """
+        return Node(
+            text=self.text,
+            metadata=self.metadata,
+            embedding=embedding
+        )
+
+    def with_embedding(self, embedding: List[float]) -> "Node":
+        """
+        Alias for set_embedding for compatibility with pipeline logic.
+        """
+        return self.set_embedding(embedding)
 
 
 @dataclass(frozen=True)
