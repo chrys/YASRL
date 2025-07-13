@@ -38,7 +38,7 @@ ollama = [
 postgres = [
     "pgvector",
     "psycopg2-binary",
-    "llama-index-vector-stores-pgvector"
+    "llama-index-vector-stores-postgres"
 ]
 dev = [
     "black",

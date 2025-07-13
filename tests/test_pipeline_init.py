@@ -78,7 +78,10 @@ async def test_pipeline_context_manager(
     mock_env_vars,
 ):
     """Tests the async context manager functionality."""
-    # No need to mock initialize/close, just ensure context manager works
+    mock_db_manager = MockVectorStoreManager.return_value
+    mock_db_manager.ainit = AsyncMock()
+    mock_db_manager.close = AsyncMock()
+
     async with await RAGPipeline.create(llm="openai", embed_model="openai") as pipeline:
         assert pipeline is not None
         assert isinstance(pipeline, RAGPipeline)

@@ -17,6 +17,7 @@ class TestVectorStoreManager(unittest.TestCase):
             vector_dimensions=self.vector_dimensions,
             table_prefix=self.table_prefix,
         )
+        self.manager._pool = MagicMock()
 
     def test_init(self):
         """Test VectorStoreManager initialization."""
@@ -24,7 +25,6 @@ class TestVectorStoreManager(unittest.TestCase):
         self.assertEqual(self.manager.vector_dimensions, self.vector_dimensions)
         self.assertEqual(self.manager.table_name, "test_chunks")
         self.assertIsNone(self.manager._vector_store)
-        self.assertIsNone(self.manager._connection)
 
     def test_parsed_uri(self):
         """Test URI parsing."""
@@ -74,18 +74,19 @@ class TestVectorStoreManager(unittest.TestCase):
     def test_get_connection_success(self, mock_connect):
         """Test successful database connection."""
         mock_conn = MagicMock()
-        mock_connect.return_value = mock_conn
+        self.manager._pool.getconn.return_value = mock_conn
 
         result = self.manager._get_connection()
 
-        mock_connect.assert_called_once_with(self.postgres_uri)
         self.assertEqual(result, mock_conn)
-        self.assertEqual(self.manager._connection, mock_conn)
+        self.manager._pool.getconn.assert_called_once()
 
     @patch("yasrl.vector_store.psycopg2.connect")
     def test_get_connection_error(self, mock_connect):
         """Test database connection error handling."""
-        mock_connect.side_effect = psycopg2.Error("Connection failed")
+        def raise_psycopg2_error():
+            raise psycopg2.Error("Connection failed")
+        self.manager._pool.getconn.side_effect = raise_psycopg2_error
 
         with self.assertRaises(IndexingError) as context:
             self.manager._get_connection()

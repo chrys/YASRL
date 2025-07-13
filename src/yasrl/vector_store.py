@@ -91,7 +91,10 @@ class VectorStoreManager:
         """
         if not self._pool:
             raise IndexingError("Connection pool is not initialized.")
-        return self._pool.getconn()
+        try:
+            return self._pool.getconn()
+        except psycopg2.Error as e:
+            raise IndexingError(f"Failed to connect to PostgreSQL: {e}")
 
     def _release_connection(self, conn: connection):
         """

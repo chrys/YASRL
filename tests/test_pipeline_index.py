@@ -53,8 +53,10 @@ class TestRAGPipelineIndex(unittest.TestCase):
             mock_embedding_provider = MagicMock()
             mock_embedding_provider.get_embedding_model.return_value.get_text_embedding_batch = AsyncMock(return_value=[[1.0]])
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            mock_db_manager = MockVectorStoreManager.return_value
+            mock_db_manager.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
-            pipeline.db_manager = MockVectorStoreManager.return_value
+            pipeline.db_manager = mock_db_manager
             asyncio.run(pipeline.index("dummy/path/to/file.txt"))
             mock_doc_loader.load_documents.assert_called_once_with("dummy/path/to/file.txt")
             mock_text_processor.process_documents.assert_called_once()
@@ -104,8 +106,10 @@ class TestRAGPipelineIndex(unittest.TestCase):
             mock_embedding_provider = MagicMock()
             mock_embedding_provider.get_embedding_model.return_value.get_text_embedding_batch = AsyncMock(side_effect=[[[1.0]], [[2.0]]])
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            mock_db_manager = MockVectorStoreManager.return_value
+            mock_db_manager.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
-            pipeline.db_manager = MockVectorStoreManager.return_value
+            pipeline.db_manager = mock_db_manager
             asyncio.run(pipeline.index("dummy/directory"))
             mock_doc_loader.load_documents.assert_called_once_with("dummy/directory")
             self.assertEqual(mock_text_processor.process_documents.call_count, 2)
@@ -151,8 +155,10 @@ class TestRAGPipelineIndex(unittest.TestCase):
             mock_embedding_provider = MagicMock()
             mock_embedding_provider.get_embedding_model.return_value.get_text_embedding_batch = AsyncMock(return_value=[[1.0]])
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            mock_db_manager = MockVectorStoreManager.return_value
+            mock_db_manager.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
-            pipeline.db_manager = MockVectorStoreManager.return_value
+            pipeline.db_manager = mock_db_manager
             asyncio.run(pipeline.index("http://example.com"))
             mock_doc_loader.load_documents.assert_called_once_with("http://example.com")
             mock_text_processor.process_documents.assert_called_once()
@@ -198,8 +204,10 @@ class TestRAGPipelineIndex(unittest.TestCase):
             mock_embedding_provider = MagicMock()
             mock_embedding_provider.get_embedding_model.return_value.get_text_embedding_batch = AsyncMock(return_value=[[1.0]])
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            mock_db_manager = MockVectorStoreManager.return_value
+            mock_db_manager.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
-            pipeline.db_manager = MockVectorStoreManager.return_value
+            pipeline.db_manager = mock_db_manager
             asyncio.run(pipeline.index("dummy/path/to/file.txt"))
             asyncio.run(pipeline.index("dummy/path/to/file.txt"))
             self.assertEqual(mock_doc_loader.load_documents.call_count, 2)
@@ -249,8 +257,10 @@ class TestRAGPipelineIndex(unittest.TestCase):
                 return_value=[[1.0], [2.0], [3.0]]
             )
             MockEmbeddingProviderFactory.create_provider.return_value = mock_embedding_provider
+            mock_db_manager = MockVectorStoreManager.return_value
+            mock_db_manager.ainit = AsyncMock()
             pipeline = asyncio.run(RAGPipeline.create(llm="openai", embed_model="openai"))
-            pipeline.db_manager = MockVectorStoreManager.return_value
+            pipeline.db_manager = mock_db_manager
             asyncio.run(pipeline.index("dummy/path/to/large_file.txt"))
             mock_doc_loader.load_documents.assert_called_once_with("dummy/path/to/large_file.txt")
             mock_text_processor.process_documents.assert_called_once()
