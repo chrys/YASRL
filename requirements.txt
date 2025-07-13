@@ -6,3 +6,5 @@ pytest-mock
 black
 flake8
 mypy
+llama-index-postprocessor-cohere-rerank
+sentence-transformers
