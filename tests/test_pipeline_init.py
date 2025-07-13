@@ -1,104 +1,89 @@
 import asyncio
+import logging
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from yasrl.exceptions import ConfigurationError
-from yasrl.pipeline import RAGPipeline
+from src.yasrl.exceptions import ConfigurationError
+from src.yasrl.pipeline import RAGPipeline
 
 
 @pytest.fixture
 def mock_env_vars(monkeypatch):
-    """Fixture to set mock environment variables."""
-    monkeypatch.setenv("POSTGRES_USER", "testuser")
-    monkeypatch.setenv("POSTGRES_PASSWORD", "testpass")
-    monkeypatch.setenv("POSTGRES_HOST", "localhost")
-    monkeypatch.setenv("POSTGRES_PORT", "5432")
-    monkeypatch.setenv("POSTGRES_DB", "testdb")
-    monkeypatch.setenv("OPENAI_API_KEY", "fake_key")
-
-
-@pytest.mark.asyncio
-async def test_pipeline_initialization_success(mock_env_vars):
-    """Tests successful initialization of the RAGPipeline."""
-    with patch("yasrl.config.manager.ConfigManager") as mock_config_manager, patch(
-        "yasrl.providers.llm.LLMProviderFactory"
-    ) as mock_llm_factory, patch(
-        "yasrl.providers.embeddings.EmbeddingProviderFactory"
-    ) as mock_embedding_factory, patch(
-        "yasrl.vector_store.VectorStoreManager"
-    ) as mock_vector_store_manager:
-        # Arrange
-        mock_config_instance = MagicMock()
-        mock_config_instance.get_database_config.return_value = {
-            "user": "testuser",
-            "password": "testpass",
-            "host": "localhost",
-            "port": "5432",
-            "dbname": "testdb",
-        }
-        mock_config_manager.return_value = mock_config_instance
-
-        mock_llm_provider = MagicMock()
-        mock_llm_factory.create.return_value = mock_llm_provider
-
-        mock_embedding_provider = MagicMock()
-        mock_embedding_factory.create.return_value = mock_embedding_provider
-
-        mock_vector_store_instance = MagicMock()
-        mock_vector_store_instance.initialize = asyncio.coroutine(MagicMock())
-        mock_vector_store_manager.return_value = mock_vector_store_instance
-
-        # Act
-        pipeline = RAGPipeline(llm="openai", embed_model="openai")
-        await pipeline.initialize()
-
-        # Assert
-        mock_config_manager.assert_called_once()
-        mock_config_instance.validate_config.assert_called_with("openai", "openai")
-        mock_llm_factory.create.assert_called_with("openai")
-        mock_embedding_factory.create.assert_called_with("openai")
-        mock_vector_store_manager.assert_called_once()
-        mock_vector_store_instance.initialize.assert_called_once()
-        assert pipeline.llm_provider == mock_llm_provider
-        assert pipeline.embedding_provider == mock_embedding_provider
-        assert pipeline.vector_store_manager == mock_vector_store_instance
-        assert pipeline._is_initialized
-
-
-@pytest.mark.asyncio
-async def test_pipeline_initialization_missing_env_vars():
-    """Tests that ConfigurationError is raised for missing environment variables."""
-    with pytest.raises(ConfigurationError):
-        pipeline = RAGPipeline(llm="openai", embed_model="openai")
-        await pipeline.initialize()
-
-
-@pytest.mark.asyncio
-async def test_pipeline_context_manager(mock_env_vars):
-    """Tests the async context manager functionality."""
-    with patch("yasrl.pipeline.RAGPipeline.initialize") as mock_initialize, patch(
-        "yasrl.pipeline.RAGPipeline.cleanup"
-    ) as mock_cleanup:
-        mock_initialize.return_value = asyncio.coroutine(MagicMock())()
-        mock_cleanup.return_value = asyncio.coroutine(MagicMock())()
-
-        pipeline = RAGPipeline(llm="openai", embed_model="openai")
-        async with pipeline as p:
-            assert p is pipeline
-            mock_initialize.assert_called_once()
-        mock_cleanup.assert_called_once()
-
-
-def test_logging_configuration(monkeypatch):
-    """Tests that logging is configured based on environment variables."""
+    monkeypatch.setenv("POSTGRES_DB", "test_db")
+    monkeypatch.setenv("POSTGRES_USER", "test_user")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "test_password")
+    monkeypatch.setenv("OPENAI_API_KEY", "test_api_key")
     monkeypatch.setenv("LOG_LEVEL", "DEBUG")
-    # This is tricky to test without capturing output, but we can check the logger's level
-    import logging
+    monkeypatch.setenv("TEXT_CHUNK_SIZE", "500")
 
-    # Re-importing pipeline to re-trigger logging configuration
-    from yasrl import pipeline
 
-    assert logging.getLogger(pipeline.__name__).level == logging.DEBUG
-    monkeypatch.delenv("LOG_LEVEL")
+@patch("src.yasrl.pipeline.LLMProviderFactory")
+@patch("src.yasrl.pipeline.EmbeddingProviderFactory")
+@patch("src.yasrl.pipeline.VectorStoreManager")
+@patch("src.yasrl.pipeline.ConfigurationManager")
+def test_pipeline_init_success(
+    MockConfigManager,
+    MockVectorStoreManager,
+    MockEmbeddingProviderFactory,
+    MockLLMProviderFactory,
+    mock_env_vars,
+):
+    """Tests successful initialization of the RAGPipeline."""
+    mock_config = MockConfigManager.return_value
+    mock_config.get_required_variables.return_value = ["OPENAI_API_KEY"]
+
+    mock_db_manager = MockVectorStoreManager.return_value
+    mock_db_manager.initialize = AsyncMock()
+
+    pipeline = RAGPipeline(llm="openai", embed_model="openai")
+
+    assert pipeline.llm_provider is not None
+    assert pipeline.embedding_provider is not None
+    assert pipeline.db_manager is not None
+    assert pipeline.text_processor is not None
+    assert pipeline.text_processor.chunk_size == 500
+
+    MockLLMProviderFactory.create.assert_called_once_with("openai")
+    MockEmbeddingProviderFactory.create.assert_called_once_with("openai")
+
+
+def test_pipeline_init_missing_env_vars():
+    """Tests that ConfigurationError is raised for missing environment variables."""
+    with pytest.raises(ConfigurationError) as excinfo:
+        RAGPipeline(llm="openai", embed_model="openai")
+    assert "Missing required environment variables" in str(excinfo.value)
+
+
+@patch("src.yasrl.pipeline.LLMProviderFactory")
+@patch("src.yasrl.pipeline.EmbeddingProviderFactory")
+@patch("src.yasrl.pipeline.VectorStoreManager")
+@patch("src.yasrl.pipeline.ConfigurationManager")
+@pytest.mark.asyncio
+async def test_pipeline_context_manager(
+    MockConfigManager,
+    MockVectorStoreManager,
+    MockEmbeddingProviderFactory,
+    MockLLMProviderFactory,
+    mock_env_vars,
+):
+    """Tests the async context manager functionality."""
+    mock_db_manager = MockVectorStoreManager.return_value
+    mock_db_manager.initialize = AsyncMock()
+    mock_db_manager.close = AsyncMock()
+
+    async with await RAGPipeline.create(llm="openai", embed_model="openai") as pipeline:
+        assert pipeline is not None
+        mock_db_manager.initialize.assert_awaited_once()
+
+    mock_db_manager.close.assert_awaited_once()
+
+
+@patch("src.yasrl.pipeline.logging")
+def test_logging_setup(mock_logging, mock_env_vars):
+    """Tests that logging is configured correctly."""
+    RAGPipeline(llm="openai", embed_model="openai")
+    mock_logging.basicConfig.assert_called_once()
+    args, kwargs = mock_logging.basicConfig.call_args
+    assert kwargs["level"] == "DEBUG"
