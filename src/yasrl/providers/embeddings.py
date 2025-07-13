@@ -36,6 +36,12 @@ class EmbeddingProvider(ABC):
         """
         pass
 
+    def get_max_chunk_size(self) -> int:
+        """
+        Returns the optimal chunk size for this embedding model.
+        """
+        return self.chunk_size
+
 class OpenAIEmbeddingProvider(EmbeddingProvider):
     CHUNK_SIZE = 1024
     DEFAULT_MODEL = "text-embedding-3-small"
@@ -60,6 +66,9 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
     @property
     def model_name(self) -> str:
         return getattr(self.config, "openai_embedding_model", self.DEFAULT_MODEL)
+
+    def get_max_chunk_size(self) -> int:
+        return self.CHUNK_SIZE
 
 class GeminiEmbeddingProvider(EmbeddingProvider):
     CHUNK_SIZE = 1024
@@ -86,6 +95,9 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
     def model_name(self) -> str:
         return getattr(self.config, "gemini_embedding_model", self.DEFAULT_MODEL)
 
+    def get_max_chunk_size(self) -> int:
+        return self.CHUNK_SIZE
+
 class OpenSourceEmbeddingProvider(EmbeddingProvider):
     CHUNK_SIZE = 512
     DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -109,6 +121,9 @@ class OpenSourceEmbeddingProvider(EmbeddingProvider):
     @property
     def model_name(self) -> str:
         return getattr(self.config, "opensource_embedding_model", self.DEFAULT_MODEL)
+
+    def get_max_chunk_size(self) -> int:
+        return self.CHUNK_SIZE
 
 class EmbeddingProviderFactory:
     """
@@ -144,3 +159,10 @@ class EmbeddingProviderFactory:
         if name not in EmbeddingProviderFactory._chunk_size_map:
             raise ValueError(f"Unsupported embedding provider: {provider_name}")
         return EmbeddingProviderFactory._chunk_size_map[name]
+
+    @staticmethod
+    def get_embedding_provider(provider_name: str, config=None) -> EmbeddingProvider:
+        """
+        Returns an embedding provider instance (for compatibility with some usages).
+        """
+        return EmbeddingProviderFactory.create_provider(provider_name, config)

@@ -45,6 +45,5 @@ class TextProcessor:
     ) -> int:
         if chunk_size:
             return chunk_size
-        return EmbeddingProviderFactory.get_embedding_provider(
-            embedding_provider
-        ).get_max_chunk_size()
+        provider = EmbeddingProviderFactory.get_embedding_provider(embedding_provider)
+        return provider.get_max_chunk_size()
