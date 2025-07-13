@@ -1,4 +1,5 @@
 import asyncio
+import os
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
 
@@ -33,8 +34,14 @@ class TestRAGPipelineComplete(unittest.TestCase):
         mock_config_manager.return_value.load_config.return_value.database.vector_dimensions = 768
         mock_db_manager.return_value.ainit = AsyncMock()
 
-        # Act
-        pipeline = asyncio.run(RAGPipeline.create(llm=self.llm, embed_model=self.embed_model))
+        # Patch required environment variables for validation
+        with patch.dict(os.environ, {
+            "OPENAI_API_KEY": "test-openai-key",
+            "GOOGLE_API_KEY": "test-gemini-key",
+            "POSTGRES_URI": "test_uri"
+        }, clear=True):
+            # Act
+            pipeline = asyncio.run(RAGPipeline.create(llm=self.llm, embed_model=self.embed_model))
 
         # Assert
         mock_config_manager.assert_called_once()
@@ -45,54 +52,78 @@ class TestRAGPipelineComplete(unittest.TestCase):
         mock_query_processor.assert_called_once()
         pipeline.db_manager.ainit.assert_called_once()
 
+    @patch("yasrl.pipeline.ConfigurationManager")
     @patch("yasrl.pipeline.RAGPipeline._ainit")
     @patch("yasrl.pipeline.RAGPipeline.cleanup")
-    def test_context_manager(self, mock_cleanup, mock_ainit):
+    def test_context_manager(self, mock_cleanup, mock_ainit, mock_config_manager):
         """Test that the async context manager (__aenter__ and __aexit__) works correctly."""
         # Arrange
-        pipeline = RAGPipeline(llm=self.llm, embed_model=self.embed_model)
-        mock_ainit.return_value = None
-        mock_cleanup.return_value = None
+        mock_config_manager.return_value.load_config.return_value.database.postgres_uri = "test_uri"
+        # Patch required environment variables for validation
+        with patch.dict(os.environ, {
+            "OPENAI_API_KEY": "test-openai-key",
+            "GOOGLE_API_KEY": "test-gemini-key",
+            "POSTGRES_URI": "test_uri"
+        }, clear=True):
+            pipeline = RAGPipeline(llm=self.llm, embed_model=self.embed_model)
+            mock_ainit.return_value = None
+            mock_cleanup.return_value = None
 
-        async def run_test():
-            async with pipeline as p:
-                self.assertIs(p, pipeline)
-                mock_ainit.assert_called_once()
-                mock_cleanup.assert_not_called()
-            mock_cleanup.assert_called_once()
+            async def run_test():
+                async with pipeline as p:
+                    self.assertIs(p, pipeline)
+                    mock_ainit.assert_called_once()
+                    mock_cleanup.assert_not_called()
+                mock_cleanup.assert_called_once()
 
-        # Act & Assert
-        asyncio.run(run_test())
+            # Act & Assert
+            asyncio.run(run_test())
 
+    @patch("yasrl.pipeline.ConfigurationManager")
     @patch("yasrl.pipeline.VectorStoreManager")
-    def test_health_check(self, mock_db_manager):
+    def test_health_check(self, mock_db_manager, mock_config_manager):
         """Test the health check method."""
         # Arrange
-        pipeline = RAGPipeline(llm=self.llm, embed_model=self.embed_model)
-        pipeline.db_manager = mock_db_manager
-        pipeline.db_manager.check_connection = AsyncMock(return_value=True)
+        mock_config_manager.return_value.load_config.return_value.database.postgres_uri = "test_uri"
+        # Patch required environment variables for validation
+        with patch.dict(os.environ, {
+            "OPENAI_API_KEY": "test-openai-key",
+            "GOOGLE_API_KEY": "test-gemini-key",
+            "POSTGRES_URI": "test_uri"
+        }, clear=True):
+            pipeline = RAGPipeline(llm=self.llm, embed_model=self.embed_model)
+            pipeline.db_manager = mock_db_manager
+            pipeline.db_manager.check_connection = AsyncMock(return_value=True)
 
-        # Act
-        is_healthy = asyncio.run(pipeline.health_check())
+            # Act
+            is_healthy = asyncio.run(pipeline.health_check())
 
-        # Assert
-        self.assertTrue(is_healthy)
-        pipeline.db_manager.check_connection.assert_called_once()
+            # Assert
+            self.assertTrue(is_healthy)
+            pipeline.db_manager.check_connection.assert_called_once()
 
+    @patch("yasrl.pipeline.ConfigurationManager")
     @patch("yasrl.pipeline.VectorStoreManager")
-    def test_get_statistics(self, mock_db_manager):
+    def test_get_statistics(self, mock_db_manager, mock_config_manager):
         """Test the get_statistics method."""
         # Arrange
-        pipeline = RAGPipeline(llm=self.llm, embed_model=self.embed_model)
-        pipeline.db_manager = mock_db_manager
-        pipeline.db_manager.get_document_count = AsyncMock(return_value=10)
+        mock_config_manager.return_value.load_config.return_value.database.postgres_uri = "test_uri"
+        # Patch required environment variables for validation
+        with patch.dict(os.environ, {
+            "OPENAI_API_KEY": "test-openai-key",
+            "GOOGLE_API_KEY": "test-gemini-key",
+            "POSTGRES_URI": "test_uri"
+        }, clear=True):
+            pipeline = RAGPipeline(llm=self.llm, embed_model=self.embed_model)
+            pipeline.db_manager = mock_db_manager
+            pipeline.db_manager.get_document_count = AsyncMock(return_value=10)
 
-        # Act
-        stats = asyncio.run(pipeline.get_statistics())
+            # Act
+            stats = asyncio.run(pipeline.get_statistics())
 
-        # Assert
-        self.assertEqual(stats, {"indexed_documents": 10})
-        pipeline.db_manager.get_document_count.assert_called_once()
+            # Assert
+            self.assertEqual(stats, {"indexed_documents": 10})
+            pipeline.db_manager.get_document_count.assert_called_once()
 
     def test_public_api_exports(self):
         """Verify that the public API exports work correctly."""
