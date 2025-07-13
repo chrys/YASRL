@@ -5,11 +5,11 @@ from typing import List, Union
 from urllib.parse import urlparse
 
 from llama_index.core.readers.base import BaseReader as LlamaBaseReader
-from llama_index.readers.file.base import SimpleDirectoryReader
-from llama_index.readers.web.base import SimpleWebPageReader
+from llama_index.core import SimpleDirectoryReader
+from llama_index.readers.web import SimpleWebPageReader
 
 from yasrl.exceptions import IndexingError
-from yasrl.models import Document
+from llama_index.core import Document
 
 
 class DocumentLoader:
@@ -29,12 +29,16 @@ class DocumentLoader:
     def load_documents(self, source: Union[str, List[str]]) -> List[Document]:
         source_type = self.detect_source_type(source)
         if source_type == "url":
+            assert isinstance(source, str)
             return self._load_from_url(source)
         elif source_type == "url_list":
-            return self._load_from_url_list(source)
+            assert isinstance(source, list)
+            return [doc for url in source for doc in self._load_from_url(url)]
         elif source_type == "directory":
+            assert isinstance(source, str)
             return self._load_from_directory(source)
         elif source_type == "file":
+            assert isinstance(source, str)
             return self._load_from_file(source)
         else:
             raise IndexingError(f"Unsupported source type: {source_type}")
@@ -53,43 +57,38 @@ class DocumentLoader:
         documents = SimpleWebPageReader(html_to_text=True).load_data([url])
         return [
             Document(
-                id=self.generate_document_id(doc.metadata.get("extra_info", {}).get("Source", url)),
+                id_=self.generate_document_id(doc.metadata.get("extra_info", {}).get("Source", url) or "unknown"),
                 text=doc.get_content(),
                 metadata=doc.metadata,
             )
             for doc in documents
         ]
-
-    def _load_from_url_list(self, urls: List[str]) -> List[Document]:
-        documents = []
-        for url in urls:
-            documents.extend(self._load_from_url(url))
-        return documents
 
     def _load_from_directory(self, directory_path: str) -> List[Document]:
         reader = SimpleDirectoryReader(directory_path)
         documents = reader.load_data()
         return [
             Document(
-                id=self.generate_document_id(doc.metadata.get("file_path")),
+                id_=self.generate_document_id(doc.metadata.get("file_path") or "unknown"),
                 text=doc.get_content(),
                 metadata=doc.metadata,
             )
             for doc in documents
         ]
 
+
     def _load_from_file(self, file_path: str) -> List[Document]:
         _, extension = os.path.splitext(file_path)
-        if extension not in SimpleDirectoryReader.supported_suffix():
+        if extension not in SimpleDirectoryReader.supported_suffix_fn():
             raise IndexingError(f"Unsupported file type: {extension}")
 
         reader = SimpleDirectoryReader(input_files=[file_path])
         documents = reader.load_data()
         return [
             Document(
-                id=self.generate_document_id(doc.metadata.get("file_path")),
+                id_=self.generate_document_id(doc.metadata.get("file_path") or "unknown"),
                 text=doc.get_content(),
                 metadata=doc.metadata,
             )
             for doc in documents
-        ]
+]
