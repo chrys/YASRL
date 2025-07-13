@@ -1,0 +1,8 @@
+llama-index-core
+asyncio
+logging
+pytest
+pytest-mock
+black
+flake8
+mypy
