@@ -18,6 +18,31 @@ logger = logging.getLogger(__name__)
 
 
 class RAGPipeline:
+    """
+    The main class for the YasRL RAG pipeline.
+
+    This class orchestrates the entire RAG process, from indexing documents to
+    asking questions and retrieving answers.
+
+    Args:
+        llm: The name of the language model provider (e.g., "openai").
+        embed_model: The name of the embedding model provider (e.g., "gemini").
+
+    Examples:
+        >>> from yasrl import RAGPipeline
+        >>>
+        >>> async def main():
+        ...     pipeline = await RAGPipeline.create(llm="openai", embed_model="gemini")
+        ...     await pipeline.index("https://example.com")
+        ...     result = await pipeline.ask("What is the capital of France?")
+        ...     print(result.answer)
+        ...     await pipeline.cleanup()
+        >>>
+        >>> if __name__ == "__main__":
+        ...     import asyncio
+        ...     asyncio.run(main())
+    """
+
     def __init__(self, llm: str, embed_model: str):
         """
         Initializes the RAG pipeline.
@@ -84,14 +109,8 @@ class RAGPipeline:
             )
 
     async def _ainit(self):
-        """Asynchronously initializes the database connection."""
-        try:
-            conn = self.db_manager._get_connection()
-            conn.close()
-            logger.info("Database connection initialized.")
-        except Exception as e:
-            logger.error(f"Database connection failed: {e}")
-            raise ConfigurationError(f"Database connection failed: {e}")
+        """Asynchronously initializes the database connection pool."""
+        await self.db_manager.ainit()
 
     @classmethod
     async def create(cls, llm: str, embed_model: str) -> "RAGPipeline":
@@ -100,25 +119,77 @@ class RAGPipeline:
         await pipeline._ainit()
         return pipeline
 
-    async def close(self):
-        """Closes the database connection."""
-        if hasattr(self.db_manager, "_connection") and self.db_manager._connection:
-            self.db_manager._connection.close()
-            logger.info("Database connection closed.")
+    async def __aenter__(self) -> "RAGPipeline":
+        """
+        Asynchronously enters the runtime context for the pipeline.
 
-    async def __aenter__(self):
+        Initializes the database connection pool.
+
+        Returns:
+            The pipeline instance.
+
+        Example:
+            >>> async with await RAGPipeline.create("openai", "gemini") as pipeline:
+            ...     # Do something with the pipeline
+            ...     pass
+        """
         await self._ainit()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
+        """
+        Asynchronously exits the runtime context for the pipeline.
+
+        Cleans up resources, such as closing the database connection pool.
+        """
+        await self.cleanup()
+
+    async def cleanup(self):
+        """
+        Cleans up resources used by the pipeline.
+
+        This method should be called when the pipeline is no longer needed
+        to ensure graceful shutdown of database connections and other resources.
+        """
+        logger.info("Cleaning up pipeline resources...")
+        await self.db_manager.close()
+
+    async def health_check(self) -> bool:
+        """
+        Checks the health of the pipeline.
+
+        Returns:
+            True if the pipeline is healthy, False otherwise.
+        """
+        logger.info("Performing health check...")
+        return await self.db_manager.check_connection()
+
+    async def get_statistics(self) -> dict:
+        """
+        Gets statistics about the pipeline.
+
+        Returns:
+            A dictionary containing pipeline statistics, such as the number of
+            indexed documents.
+        """
+        logger.info("Getting pipeline statistics...")
+        document_count = await self.db_manager.get_document_count()
+        return {"indexed_documents": document_count}
 
     async def index(self, source: str | list[str]) -> None:
         """
         Indexes documents from a source, handling upserts and batching.
 
+        This method loads documents from the given source, processes them into
+        chunks, generates embeddings, and upserts them into the vector store.
+
         Args:
-            source: The source to index (file, directory, URL, or list of URLs).
+            source: The source to index. Can be a file path, a directory path,
+                a URL, or a list of URLs.
+
+        Example:
+            >>> await pipeline.index("./my_documents")
+            >>> await pipeline.index("https://en.wikipedia.org/wiki/RAG")
         """
         logger.info(f"Starting indexing process for source: {source}")
         start_time = perf_counter()
@@ -177,12 +248,24 @@ class RAGPipeline:
         """
         Asks a question to the RAG pipeline.
 
+        This method takes a query, retrieves relevant context from the indexed
+        documents, and generates an answer using the language model.
+
         Args:
             query: The question to ask.
-            conversation_history: A list of previous conversation turns.
+            conversation_history: A list of previous conversation turns to provide
+                context to the language model. Each turn is a dictionary with
+                "role" and "content" keys.
 
         Returns:
-            A QueryResult object containing the answer and source chunks.
+            A QueryResult object containing the answer and the source chunks
+            used to generate the answer.
+
+        Example:
+            >>> result = await pipeline.ask("What is RAG?")
+            >>> print(result.answer)
+            >>> for chunk in result.source_chunks:
+            ...     print(chunk.text)
         """
         if not query:
             raise ValueError("Query cannot be empty.")
