@@ -163,6 +163,7 @@ class VectorStoreManager:
             logger.error(f"Failed to set up schema: {e}")
             raise IndexingError(f"Failed to set up schema: {e}") from e
         finally:
+            conn.close() 
             self._release_connection(conn)
 
     def upsert_documents(self, document_id: str, chunks: list):

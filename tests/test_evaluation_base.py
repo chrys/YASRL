@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import MagicMock, patch
 from abc import ABC
 
-from src.yasrl.evaluation.base import BaseEvaluator, EvaluationError, RAGPipeline
+from yasrl.evaluation.base import BaseEvaluator, EvaluationError, RAGPipeline
 
 class MockRAGPipeline(RAGPipeline):
     def __init__(self, answer_map: dict):
