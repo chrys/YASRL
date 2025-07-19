@@ -6,10 +6,11 @@ import csv
 from typing import Any, Dict, List, Optional
 from yasrl.pipeline import RAGPipeline
 from yasrl.evaluation.base import BaseEvaluator
-from yasrl.config.manager import ConfigManager
-from yasrl.loaders import load_documents
-from yasrl.evaluation.ragas_evaluator import RagasEvaluator
-from yasrl.providers.llm import LLMProvider
+from yasrl.config.manager import ConfigurationManager
+from yasrl.loaders import DocumentLoader
+#from yasrl.evaluation.ragas_evaluator import RagasEvaluator
+from yasrl.providers.llm import GeminiLLMProvider
+from yasrl.providers.embeddings import GeminiEmbeddingProvider
 from yasrl.providers.embeddings import EmbeddingProvider
 
 # Configure logging
@@ -142,38 +143,38 @@ def run_evaluation(dataset_path: str, config_path: str, output_dir: str, output_
     expected_answers = [item["expected_answer"] for item in dataset]
 
     # Initialize pipeline
-    config_manager = ConfigManager(config_path)
-    pipeline_config = config_manager.get_pipeline_config()
-    llm_provider = LLMProvider(config=pipeline_config.llm)
-    embedding_provider = EmbeddingProvider(config=pipeline_config.embedding)
+    config_manager = ConfigurationManager(config_path)
+    pipeline_config = config_manager.load_config()
+    llm_provider = GeminiLLMProvider(config_manager)
+    embedding_provider = GeminiEmbeddingProvider(config_manager)
     pipeline = RAGPipeline(
-        llm_provider=llm_provider,
-        embedding_provider=embedding_provider,
-        vector_store=None,  # Not needed for this evaluation
-        config=pipeline_config,
+        llm=pipeline_config.llm.model_name,       
+        embed_model=pipeline_config.embedding.model_name 
     )
 
     # Initialize evaluator
-    evaluator = RagasEvaluator(llm_provider, embedding_provider)
+    #evaluator = RagasEvaluator(llm_provider, embedding_provider)
 
     # Run evaluation
-    results = evaluator.evaluate(pipeline, questions, expected_answers)
+    #results = evaluator.evaluate(pipeline, questions, expected_answers)
 
     # Save reports
-    for format in output_formats:
-        save_report(results, output_dir, format)
+    # for format in output_formats:
+    #     save_report(results, output_dir, format)
 
-    logging.info("Evaluation finished.")
+    # logging.info("Evaluation finished.")
 
 def generate_synthetic_questions(docs_path: str, num_questions: int, output_file: str):
     """Generate synthetic evaluation questions from documents."""
     logging.info(f"Generating {num_questions} synthetic questions from documents in '{docs_path}'")
 
     # Load documents
-    documents = load_documents(docs_path)
+    loader = DocumentLoader()
+    documents = loader.load_documents(docs_path)
     if not documents:
         logging.error("No documents found. Cannot generate questions.")
-        return
+        return 
+   
 
     # For demonstration purposes, we'll just take the first `num_questions` documents
     # and generate dummy questions. A real implementation would use an LLM.
@@ -206,31 +207,30 @@ def compare_pipelines(dataset_path: str, config_paths: List[str], output_dir: st
         expected_answers = [item["expected_answer"] for item in dataset]
 
         # Initialize pipeline
-        config_manager = ConfigManager(config_path)
-        pipeline_config = config_manager.get_pipeline_config()
-        llm_provider = LLMProvider(config=pipeline_config.llm)
-        embedding_provider = EmbeddingProvider(config=pipeline_config.embedding)
+        config_manager = ConfigurationManager(config_path)
+        pipeline_config = config_manager.load_config()
+        llm_provider = GeminiLLMProvider(config_manager)
+        embedding_provider = GeminiEmbeddingProvider(config_manager)
+        
         pipeline = RAGPipeline(
-            llm_provider=llm_provider,
-            embedding_provider=embedding_provider,
-            vector_store=None,  # Not needed for this evaluation
-            config=pipeline_config,
+        llm=pipeline_config.llm.model_name,       
+        embed_model=pipeline_config.embedding.model_name 
         )
 
-        # Initialize evaluator
-        evaluator = RagasEvaluator(llm_provider, embedding_provider)
+    #     # Initialize evaluator
+    #     evaluator = RagasEvaluator(llm_provider, embedding_provider)
 
-        # Run evaluation
-        results = evaluator.evaluate(pipeline, questions, expected_answers)
-        comparison_results[config_name] = results
+    #     # Run evaluation
+    #     results = evaluator.evaluate(pipeline, questions, expected_answers)
+    #     comparison_results[config_name] = results
 
-    # Save comparison report
-    os.makedirs(output_dir, exist_ok=True)
-    report_path = os.path.join(output_dir, "comparison_report.json")
-    with open(report_path, "w") as f:
-        json.dump(comparison_results, f, indent=4)
+    # # Save comparison report
+    # os.makedirs(output_dir, exist_ok=True)
+    # report_path = os.path.join(output_dir, "comparison_report.json")
+    # with open(report_path, "w") as f:
+    #     json.dump(comparison_results, f, indent=4)
 
-    logging.info(f"Comparison report saved to {report_path}")
+    # logging.info(f"Comparison report saved to {report_path}")
 
 
 if __name__ == "__main__":

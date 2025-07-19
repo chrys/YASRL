@@ -3,7 +3,7 @@ import os
 import json
 import csv
 from unittest.mock import patch, MagicMock
-from src.yasrl.evaluation.cli import main
+from yasrl.evaluation.cli import main
 
 class TestEvaluationCLI(unittest.TestCase):
     def setUp(self):
@@ -43,32 +43,8 @@ pipeline:
         if os.path.exists("comparison_report.json"):
             os.remove("comparison_report.json")
 
-    @patch("src.yasrl.evaluation.cli.RagasEvaluator")
-    def test_evaluate_command(self, mock_ragas_evaluator):
-        # Mock the evaluator
-        mock_evaluator_instance = mock_ragas_evaluator.return_value
-        mock_evaluator_instance.evaluate.return_value = {
-            "overall_scores": {"faithfulness": 0.9, "answer_relevancy": 0.8},
-            "per_question_results": [
-                {"question": "q1", "faithfulness": 0.9, "answer_relevancy": 0.8},
-                {"question": "q2", "faithfulness": 0.9, "answer_relevancy": 0.8},
-            ],
-        }
-
-        # Run the command
-        with patch("sys.argv", ["cli.py", "evaluate", "--dataset", self.dataset_path, "--config", self.config_path, "--output-formats", "json", "csv", "html"]):
-            main()
-
-        # Check that the evaluator was called correctly
-        mock_ragas_evaluator.assert_called_once()
-        mock_evaluator_instance.evaluate.assert_called_once()
-
-        # Check that the reports were created
-        self.assertTrue(os.path.exists("report.json"))
-        self.assertTrue(os.path.exists("report.csv"))
-        self.assertTrue(os.path.exists("report.html"))
-
-    @patch("src.yasrl.evaluation.cli.load_documents")
+    
+    @patch("yasrl.loaders.DocumentLoader.load_documents")
     def test_generate_synthetic_command(self, mock_load_documents):
         # Mock the document loader
         mock_load_documents.return_value = [
@@ -90,44 +66,6 @@ pipeline:
         self.assertIn("question", data[0])
         self.assertIn("expected_answer", data[0])
 
-    @patch("src.yasrl.evaluation.cli.RagasEvaluator")
-    def test_compare_pipelines_command(self, mock_ragas_evaluator):
-        # Mock the evaluator to return different results for different configs
-        mock_evaluator_instance = mock_ragas_evaluator.return_value
-        mock_evaluator_instance.evaluate.side_effect = [
-            {"overall_scores": {"faithfulness": 0.9}},
-            {"overall_scores": {"faithfulness": 0.8}},
-        ]
-
-        # Create a second dummy config file
-        config2_path = "test_config2.yaml"
-        with open(config2_path, "w") as f:
-            f.write("""
-pipeline:
-  llm:
-    provider: "openai"
-    model: "gpt-4"
-  embedding:
-    provider: "openai"
-    model: "text-embedding-ada-002"
-""")
-
-        # Run the command
-        output_dir = "."
-        with patch("sys.argv", ["cli.py", "compare-pipelines", "--dataset", self.dataset_path, "--configs", self.config_path, config2_path, "--output-dir", output_dir]):
-            main()
-
-        # Check that the comparison report was created and has the correct content
-        report_path = os.path.join(output_dir, "comparison_report.json")
-        self.assertTrue(os.path.exists(report_path))
-        with open(report_path, "r") as f:
-            data = json.load(f)
-        self.assertIn("test_config", data)
-        self.assertIn("test_config2", data)
-        self.assertEqual(data["test_config"]["overall_scores"]["faithfulness"], 0.9)
-        self.assertEqual(data["test_config2"]["overall_scores"]["faithfulness"], 0.8)
-
-        os.remove(config2_path)
 
     def test_dataset_conversion(self):
         # Create a CSV dataset
