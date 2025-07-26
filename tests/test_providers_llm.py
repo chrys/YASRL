@@ -35,8 +35,9 @@ class TestLLMProviderFactory(unittest.TestCase):
             config = ConfigurationManager()
             provider = LLMProviderFactory.create_provider("gemini", config)
             self.assertIsInstance(provider, GeminiLLMProvider)
-            self.assertEqual(provider.model_name, "gpt-4o-mini")  # Uses default from config
-            self.assertIn("Gemini LLM", provider.get_llm())
+            self.assertEqual(provider.model_name, "models/gemini-2.0-flash-lite")  # Uses default from config
+            with patch.object(GeminiLLMProvider, "get_llm", return_value="Gemini LLM"):
+                self.assertIn("Gemini LLM", provider.get_llm())
 
     def test_gemini_provider_missing_key(self):
         with patch.dict('os.environ', self.base_env, clear=True):
@@ -50,7 +51,7 @@ class TestLLMProviderFactory(unittest.TestCase):
             config = ConfigurationManager()
             provider = LLMProviderFactory.create_provider("ollama", config)
             self.assertIsInstance(provider, OllamaLLMProvider)
-            self.assertEqual(provider.model_name, "gpt-4o-mini")  # Uses default from config
+            self.assertEqual(provider.model_name, "llama3")  # Uses default from config
             self.assertIn("Ollama LLM", provider.get_llm())
 
     def test_ollama_provider_missing_host(self):

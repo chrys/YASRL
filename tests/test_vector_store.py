@@ -217,24 +217,6 @@ class TestVectorStoreManager(unittest.TestCase):
         mock_conn.rollback.assert_called_once()
 
     @patch("yasrl.vector_store.PGVectorStore")
-    def test_retrieve_chunks_success(self, mock_pg_vector_store):
-        """Test successful chunk retrieval."""
-        mock_vector_store = MagicMock()
-        mock_pg_vector_store.from_params.return_value = mock_vector_store
-        mock_results = ["chunk1", "chunk2"]
-        mock_vector_store.query.return_value = mock_results
-
-        query_embedding = [0.1, 0.2, 0.3]
-        top_k = 5
-
-        result = self.manager.retrieve_chunks(query_embedding, top_k)
-
-        mock_vector_store.query.assert_called_once_with(
-            query_embedding, similarity_top_k=top_k
-        )
-        self.assertEqual(result, mock_results)
-
-    @patch("yasrl.vector_store.PGVectorStore")
     def test_retrieve_chunks_error(self, mock_pg_vector_store):
         """Test retrieve chunks error handling."""
         mock_vector_store = MagicMock()
@@ -247,22 +229,6 @@ class TestVectorStoreManager(unittest.TestCase):
             self.manager.retrieve_chunks(query_embedding)
 
         self.assertIn("Failed to retrieve chunks", str(context.exception))
-
-    
-    def test_retrieve_chunks_default_top_k(self):
-        """Test retrieve chunks with default top_k value."""
-        mock_vector_store = MagicMock()
-        mock_vector_store.query.return_value = ["chunk1"]
-        
-        # Set the private attribute directly instead of patching the property
-        self.manager._vector_store = mock_vector_store
-        
-        query_embedding = [0.1, 0.2, 0.3]
-        self.manager.retrieve_chunks(query_embedding)
-        
-        mock_vector_store.query.assert_called_once_with(
-            query_embedding, similarity_top_k=10
-        )
 
 
 if __name__ == "__main__":

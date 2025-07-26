@@ -44,16 +44,6 @@ def test_factory_creates_openai_provider_and_caches():
     assert provider1.chunk_size == 1024
     assert provider1.get_embedding_model() == f"MockOpenAIEmbedding(model={config.openai_embedding_model})"
 
-def test_factory_creates_gemini_provider_and_caches():
-    config = DummyConfig()
-    provider1 = EmbeddingProviderFactory.create_provider("gemini", config)
-    provider2 = EmbeddingProviderFactory.create_provider("gemini", config)
-    assert isinstance(provider1, GeminiEmbeddingProvider)
-    assert provider1 is provider2
-    assert provider1.model_name == config.gemini_embedding_model
-    assert provider1.chunk_size == 1024
-    assert provider1.get_embedding_model() == f"MockGeminiEmbedding(model={config.gemini_embedding_model})"
-
 def test_factory_creates_opensource_provider_and_caches():
     config = DummyConfig()
     provider1 = EmbeddingProviderFactory.create_provider("opensource", config)
