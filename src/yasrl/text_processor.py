@@ -1,10 +1,10 @@
+import uuid
 from datetime import datetime
 from typing import Optional
 
 from llama_index.core.schema import Document
 from llama_index.core.text_splitter import SentenceSplitter
-
-from yasrl.models import Node
+from llama_index.core.schema import TextNode
 from yasrl.providers.embeddings import EmbeddingProviderFactory
 
 
@@ -13,17 +13,17 @@ class TextProcessor:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
-    def process_documents(self, documents: list[Document]) -> list[Node]:
+    def process_documents(self, documents: list[Document]) -> list[TextNode]:
         nodes = []
         for document in documents:
             nodes.extend(
                 self.create_nodes_from_text(
-                    text=document.text, metadata=document.metadata
+                    text=document.text, metadata=document.metadata or {}
                 )
             )
         return nodes
 
-    def create_nodes_from_text(self, text: str, metadata: dict) -> list[Node]:
+    def create_nodes_from_text(self, text: str, metadata: dict) -> list[TextNode]:
         nodes = []
         text_splitter = SentenceSplitter(
             chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap
@@ -36,9 +36,13 @@ class TextProcessor:
                 "total_chunks": len(text_chunks),
                 "created_at": datetime.now().isoformat(),
             }
-            nodes.append(Node(text=text_chunk, metadata=node_metadata))
+            node = TextNode(
+                id_=str(uuid.uuid4()),  # Ensure each node has a unique ID
+                text=text_chunk, 
+                metadata=node_metadata
+            )
+            nodes.append(node)
         return nodes
-
     @staticmethod
     def optimize_chunk_size(
         embedding_provider: str, chunk_size: Optional[int] = None

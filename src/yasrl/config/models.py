@@ -30,7 +30,7 @@ class LLMModelConfig:
         ... )
     """
     provider: str
-    model_name: str
+    model_name: str = "models/gemini-2.0-flash-lite"
     temperature: float = 0.7
     max_tokens: int = 4096
     timeout: int = 30
@@ -121,7 +121,7 @@ class DatabaseConfig:
     postgres_uri: str
     table_prefix: str = "yasrl"
     connection_pool_size: int = 10
-    vector_dimensions: int = 1536
+    vector_dimensions: int = 768
     index_type: str = "ivfflat"
     
     def validate(self) -> None:
@@ -188,12 +188,33 @@ class AdvancedConfig:
     log_level: str = "INFO"
     structured_logging: bool = False
     
+    # API Keys and service endpoints
+    google_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    ollama_host: Optional[str] = None
+    
     def validate(self) -> None:
         """Validate complete configuration."""
         # Validate nested configurations
         self.llm.validate()
         self.embedding.validate()
         self.database.validate()
+        
+        # Validate API keys based on providers
+        if self.llm.provider == "gemini" and not self.google_api_key:
+            raise ConfigurationError("GOOGLE_API_KEY is required for Gemini LLM provider")
+        
+        if self.embedding.provider == "gemini" and not self.google_api_key:
+            raise ConfigurationError("GOOGLE_API_KEY is required for Gemini embedding provider")
+        
+        if self.llm.provider == "openai" and not self.openai_api_key:
+            raise ConfigurationError("OPENAI_API_KEY is required for OpenAI LLM provider")
+        
+        if self.embedding.provider == "openai" and not self.openai_api_key:
+            raise ConfigurationError("OPENAI_API_KEY is required for OpenAI embedding provider")
+        
+        if self.llm.provider == "ollama" and not self.ollama_host:
+            raise ConfigurationError("OLLAMA_HOST is required for Ollama LLM provider")
         
         # Validate pipeline settings
         if self.retrieval_top_k <= 0:

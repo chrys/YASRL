@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Type
 from yasrl.exceptions import ConfigurationError
+from llama_index.embeddings.gemini import GeminiEmbedding
+import os 
 
 class EmbeddingProvider(ABC):
     """
@@ -79,11 +81,15 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         self.validate_config()
 
     def get_embedding_model(self) -> Any:
-        # Replace with actual LlamaIndex Gemini embedding instantiation
-        return f"MockGeminiEmbedding(model={self.model_name})"
+        # Return actual LlamaIndex Gemini embedding instance
+        api_key = getattr(self.config, "google_api_key", None) or os.getenv("GOOGLE_API_KEY")
+        return GeminiEmbedding(
+            model_name=self.model_name,
+            api_key=api_key
+        )
 
     def validate_config(self) -> None:
-        api_key = getattr(self.config, "google_api_key", None)
+        api_key = getattr(self.config, "google_api_key", None) or os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ConfigurationError("GOOGLE_API_KEY is required for Gemini embedding provider.")
 

@@ -18,23 +18,48 @@ class QueryProcessor:
         self.db_manager = db_manager
 
     async def process_query(self, query: str, top_k: int = 5) -> List[SourceChunk]:
+        """
+        Process a query and return relevant source chunks.
+        
+        Args:
+            query: The query string
+            top_k: Number of top results to return
+            
+        Returns:
+            List of SourceChunk objects
+            
+        Raises:
+            ValueError: If query is empty
+            RetrievalError: If retrieval fails
+        """
         if not query:
             raise ValueError("Query cannot be empty.")
 
-        query_embedding = await self.embedding_provider.get_embedding_model().get_text_embedding(query)
+        try:
+            # Generate embedding for the query - REMOVE await here
+            query_embedding = self.embedding_provider.get_embedding_model().get_text_embedding(query)
 
-        retrieved_chunks = self.db_manager.query(embedding=query_embedding, top_k=top_k)
+            # Retrieve similar chunks from the database - use retrieve_chunks method
+            retrieved_chunks = self.db_manager.retrieve_chunks(query_embedding, top_k=top_k)
 
-        if not retrieved_chunks:
-            logger.warning("No relevant chunks found for the query.")
-            return []
+            if not retrieved_chunks:
+                logger.warning("No relevant chunks found for the query.")
+                return []
 
-        source_chunks = [
-            SourceChunk(
-                text=chunk.text,
-                metadata=chunk.metadata,
-                score=chunk.score
-            ) for chunk in retrieved_chunks
-        ]
+            # Convert results to SourceChunk objects
+            source_chunks = []
+            for chunk in retrieved_chunks:
+                source_chunk = SourceChunk(
+                    text=chunk.text,
+                    metadata=chunk.metadata or {},
+                    score=getattr(chunk, 'score', 0.0)
+                )
+                source_chunks.append(source_chunk)
 
-        return source_chunks
+            logger.info(f"Retrieved {len(source_chunks)} chunks for query: {query}")
+            return source_chunks
+            
+        except Exception as e:
+            logger.error(f"Failed to process query '{query}': {e}")
+            from .exceptions import RetrievalError
+            raise RetrievalError(f"Failed to process query: {e}") from e

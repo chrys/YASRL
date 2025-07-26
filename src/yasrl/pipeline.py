@@ -64,11 +64,19 @@ class RAGPipeline:
             embed_model, self.config_manager
         )
 
+        # Get the actual embedding dimensions from the provider
+        # Test with a sample text to get the actual dimensions
+        sample_embedding = self.embedding_provider.get_embedding_model().get_text_embedding("test")
+        actual_embed_dim = len(sample_embedding)
+        
+        logger.info(f"Using embedding dimensions: {actual_embed_dim}")
+
         self.db_manager = VectorStoreManager(
             postgres_uri=config.database.postgres_uri,
-            vector_dimensions=config.database.vector_dimensions,
+            vector_dimensions=actual_embed_dim,  # Use actual dimensions from the provider
             table_prefix=os.getenv("TABLE_PREFIX", "yasrl"),
         )
+        
         self.text_processor = TextProcessor(
             chunk_size=int(os.getenv("TEXT_CHUNK_SIZE", 1000))
         )
@@ -111,6 +119,7 @@ class RAGPipeline:
     async def _ainit(self):
         """Asynchronously initializes the database connection pool."""
         await self.db_manager.ainit()
+        self.db_manager.setup_schema()
 
     @classmethod
     async def create(cls, llm: str, embed_model: str) -> "RAGPipeline":
@@ -220,15 +229,11 @@ class RAGPipeline:
 
                 # Generate embeddings for the chunks
                 texts = [node.text for node in nodes]
-                embeddings = await self.embedding_provider.get_embedding_model().get_text_embedding_batch(texts)
+                embeddings = self.embedding_provider.get_embedding_model().get_text_embedding_batch(texts)
 
                 for node, embedding in zip(nodes, embeddings):
-                    if hasattr(node, "set_embedding"):
-                        node.set_embedding(embedding)
-                    elif hasattr(node, "with_embedding"):
-                        node = node.with_embedding(embedding)
-                    else:
-                        logger.warning(f"Cannot set embedding for node: {getattr(node, 'id_', None)} (read-only attribute)")
+                    node.embedding = embedding
+                    
 
                 # Upsert the chunks into the vector store
                 self.db_manager.upsert_documents(document_id=doc_id, chunks=nodes)
@@ -246,50 +251,86 @@ class RAGPipeline:
 
     async def ask(self, query: str, conversation_history: list[dict] | None = None) -> QueryResult:
         """
-        Asks a question to the RAG pipeline.
-
-        This method takes a query, retrieves relevant context from the indexed
-        documents, and generates an answer using the language model.
+        Asks a question and returns the answer with source information.
 
         Args:
             query: The question to ask.
-            conversation_history: A list of previous conversation turns to provide
-                context to the language model. Each turn is a dictionary with
-                "role" and "content" keys.
+            conversation_history: Optional conversation history for context.
 
         Returns:
-            A QueryResult object containing the answer and the source chunks
-            used to generate the answer.
+            QueryResult: The answer and source chunks.
 
-        Example:
-            >>> result = await pipeline.ask("What is RAG?")
-            >>> print(result.answer)
-            >>> for chunk in result.source_chunks:
-            ...     print(chunk.text)
+        Raises:
+            RetrievalError: If the query fails.
         """
-        if not query:
-            raise ValueError("Query cannot be empty.")
-
-        source_chunks = await self.query_processor.process_query(query)
-
-        prompt = self._format_prompt(query, source_chunks, conversation_history)
-
+        logger.info(f"Processing query: {query}")
+        
         try:
-            # Limit conversation history to the last 5 turns to avoid exceeding token limits
-            if conversation_history and len(conversation_history) > 5:
-                conversation_history = conversation_history[-5:]
-
-            response = await self.llm_provider.get_llm().achat(prompt)
-            answer = response.message.content
-
-            if not answer:
-                raise ValueError("LLM returned an empty response.")
-
+            # Get relevant chunks from the query processor
+            source_chunks = await self.query_processor.process_query(query)
+            
+            # Prepare context from source chunks
+            context = "\n\n".join([chunk.text for chunk in source_chunks])
+            
+            # Build the prompt
+            system_prompt = (
+                "You are a helpful assistant. Use the provided context to answer questions accurately. "
+                "If the context doesn't contain enough information to answer the question, say so clearly."
+            )
+            
+            user_prompt = f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
+            
+            # Get response from LLM
+            llm = self.llm_provider.get_llm()
+            
+            # Handle different LLM provider interfaces
+            try:
+                if hasattr(llm, 'achat'):
+                    # For providers that support async chat
+                    from llama_index.core.llms import ChatMessage
+                    messages = [
+                        ChatMessage(role="system", content=system_prompt),
+                        ChatMessage(role="user", content=user_prompt)
+                    ]
+                    response = await llm.achat(messages)
+                    answer = response.message.content
+                elif hasattr(llm, 'agenerate'):
+                    # For providers that support async generate
+                    response = await llm.agenerate([user_prompt])
+                    answer = response.generations[0][0].text
+                elif hasattr(llm, 'generate'):
+                    # For synchronous providers
+                    response = llm.generate([user_prompt])
+                    answer = response.generations[0][0].text
+                elif hasattr(llm, 'complete'):
+                    # Try LlamaIndex complete method
+                    response = await llm.acomplete(user_prompt) if hasattr(llm, 'acomplete') else llm.complete(user_prompt)
+                    answer = str(response)
+                else:
+                    # If none of the standard methods work, create a simple response
+                    logger.warning(f"Unknown LLM interface for {type(llm)}. Using fallback response.")
+                    answer = f"I found {len(source_chunks)} relevant sources but cannot generate a response with the current LLM configuration."
+                    
+            except Exception as llm_error:
+                logger.error(f"LLM call failed: {llm_error}")
+                answer = f"I found relevant information but encountered an error generating the response: {str(llm_error)}"
+            
+            # Create and return the result
+            result = QueryResult(
+                answer=answer.strip(),
+                source_chunks=source_chunks
+            )
+            
+            logger.info(f"Query processed successfully. Found {len(source_chunks)} source chunks.")
+            return result
+            
         except Exception as e:
-            logger.error(f"Error getting response from LLM: {e}")
-            return QueryResult(answer="Error getting response from LLM.", source_chunks=[])
-
-        return QueryResult(answer=answer, source_chunks=source_chunks)
+            logger.error(f"Failed to process query '{query}': {e}")
+            # Return a result with error information instead of raising
+            return QueryResult(
+                answer=f"Sorry, I encountered an error while processing your question: {str(e)}",
+                source_chunks=[]
+            )
 
     def _format_prompt(self, query: str, context: list, conversation_history: list[dict] | None = None) -> str:
         """

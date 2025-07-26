@@ -12,13 +12,18 @@ requires-python = ">=3.8"
 dependencies = [
     "llama-index-core",
     "llama-index-readers-web",
+    "llama-index-readers-file",
     "llama-index-vector-stores-postgres",
+    "llama-index-embeddings-gemini",
+    "llama-index-llms-gemini",
     "asyncio",
     "dataclasses; python_version<'3.10'",
     "logging",
     "python-dotenv",
     "pyyaml",
-    "pytest-asyncio"
+    "pytest-asyncio", 
+    "numpy",
+
 ]
 
 [project.optional-dependencies]

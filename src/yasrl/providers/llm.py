@@ -1,6 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 from typing import Any
+from llama_index.llms.gemini import Gemini
 from yasrl.config import ConfigurationManager
 from yasrl.exceptions import ConfigurationError
 
@@ -61,13 +62,19 @@ class GeminiLLMProvider(LLMProvider):
     """
     LLM provider for Gemini.
     """
+    DEFAULT_MODEL = "models/gemini-2.0-flash-lite"
+    
     def __init__(self, config: ConfigurationManager):
         self.config = config
         self.validate_config()
 
     def get_llm(self) -> Any:
-        # Placeholder for actual LlamaIndex Gemini LLM instantiation
-        return f"Gemini LLM: {self.model_name}"
+        # Return actual LlamaIndex Gemini LLM instance
+        api_key = getattr(self.config, "google_api_key", None) or os.getenv("GOOGLE_API_KEY")
+        return Gemini(
+            model=self.model_name,
+            api_key=api_key
+        )
     
     def validate_config(self) -> None:
         # Check environment variable directly for API key
@@ -77,11 +84,18 @@ class GeminiLLMProvider(LLMProvider):
 
     @property
     def model_name(self) -> str:
+        # Always use Gemini-specific model names, ignore config defaults
         try:
             config_obj = self.config.load_config()
-            return config_obj.llm.model_name
+            # Only use config model if it's a valid Gemini model
+            config_model = getattr(config_obj.llm, 'model_name', self.DEFAULT_MODEL)
+            if config_model.startswith(('gemini', 'models/gemini')):
+                return config_model
+            else:
+                # If config has non-Gemini model, use our default
+                return self.DEFAULT_MODEL
         except:
-            return "gemini-pro"  # fallback default
+            return self.DEFAULT_MODEL
 
 class OllamaLLMProvider(LLMProvider):
     """

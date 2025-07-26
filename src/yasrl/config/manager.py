@@ -198,31 +198,38 @@ class ConfigurationManager:
     def _load_env_config(self) -> Dict[str, Any]:
         """
         Load configuration from environment variables.
-        
+            
         Returns:
             Dictionary with configuration from environment variables
         """
         env_config = {}
         prefix = f"{self.env_prefix}_"
-        
+            
         # Map environment variables to config structure
         env_mappings = {
+            # LLM configuration
             f"{prefix}LLM_PROVIDER": ["llm", "provider"],
             f"{prefix}LLM_MODEL": ["llm", "model_name"],
             f"{prefix}LLM_TEMPERATURE": ["llm", "temperature"],
             f"{prefix}LLM_MAX_TOKENS": ["llm", "max_tokens"],
             f"{prefix}LLM_TIMEOUT": ["llm", "timeout"],
             f"{prefix}LLM_API_VERSION": ["llm", "api_version"],
+            
+            # Embedding configuration
             f"{prefix}EMBEDDING_PROVIDER": ["embedding", "provider"],
             f"{prefix}EMBEDDING_MODEL": ["embedding", "model_name"],
             f"{prefix}CHUNK_SIZE": ["embedding", "chunk_size"],
             f"{prefix}BATCH_SIZE": ["embedding", "batch_size"],
             f"{prefix}EMBEDDING_TIMEOUT": ["embedding", "timeout"],
+            
+            # Database configuration
             f"{prefix}POSTGRES_URI": ["database", "postgres_uri"],
             f"{prefix}TABLE_PREFIX": ["database", "table_prefix"],
             f"{prefix}CONNECTION_POOL_SIZE": ["database", "connection_pool_size"],
             f"{prefix}VECTOR_DIMENSIONS": ["database", "vector_dimensions"],
             f"{prefix}INDEX_TYPE": ["database", "index_type"],
+            
+            # General configuration
             f"{prefix}RETRIEVAL_TOP_K": ["retrieval_top_k"],
             f"{prefix}RERANK_TOP_K": ["rerank_top_k"],
             f"{prefix}CHUNK_OVERLAP": ["chunk_overlap"],
@@ -231,24 +238,30 @@ class ConfigurationManager:
             f"{prefix}ASYNC_PROCESSING": ["async_processing"],
             f"{prefix}LOG_LEVEL": ["log_level"],
             f"{prefix}STRUCTURED_LOGGING": ["structured_logging"],
+            
+            # API Keys - these should be read directly without prefix
+            "GOOGLE_API_KEY": ["google_api_key"],
+            "OPENAI_API_KEY": ["openai_api_key"],
+            "OLLAMA_HOST": ["ollama_host"],
+            "POSTGRES_URI": ["database", "postgres_uri"],  # Also allow direct POSTGRES_URI
         }
-        
+            
         for env_var, config_path in env_mappings.items():
             value = os.getenv(env_var)
             if value is not None:
                 self._set_nested_value(env_config, config_path, self._convert_env_value(value))
         
         return env_config
-    
+
     def _set_nested_value(self, config: Dict[str, Any], path: List[str], value: Any) -> None:
         """
         Set a nested value in configuration dictionary.
-        
+
         Args:
-            config: Configuration dictionary to modify
-            path: List of keys representing path to value
-            value: Value to set
-        """
+                config: Configuration dictionary to modify
+                path: List of keys representing path to value
+                value: Value to set
+            """
         current = config
         for key in path[:-1]:
             if key not in current:
@@ -326,7 +339,11 @@ class ConfigurationManager:
                 cache_enabled=config_dict["cache_enabled"],
                 async_processing=config_dict["async_processing"],
                 log_level=config_dict["log_level"],
-                structured_logging=config_dict["structured_logging"]
+                structured_logging=config_dict["structured_logging"],
+                # Add API keys to config object
+                google_api_key=config_dict.get("google_api_key"),
+                openai_api_key=config_dict.get("openai_api_key"),
+                ollama_host=config_dict.get("ollama_host")
             )
             
             # Validate the complete configuration

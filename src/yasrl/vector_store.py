@@ -1,9 +1,11 @@
 import logging
 from typing import List, Optional
 from urllib.parse import urlparse
-
+import uuid
 import psycopg2
+import numpy as np
 from llama_index.vector_stores.postgres import PGVectorStore
+from llama_index.core.vector_stores import VectorStoreQuery 
 from psycopg2.extensions import connection
 from psycopg2.pool import SimpleConnectionPool
 
@@ -182,6 +184,16 @@ class VectorStoreManager:
 
                 logger.info(f"Inserting {len(chunks)} new chunks for document_id: {document_id}")
                 for chunk in chunks:
+                    #self.vector_store.add([chunk])
+                    #set nod ID if not present
+                    if not hasattr(chunk, 'id_') or not chunk.id_:
+                        chunk.id_ = str(uuid.uuid4())
+                    # Ensure metadata contains document_id
+                    if not hasattr(chunk, 'metadata') or chunk.metadata is None:
+                        chunk.metadata = {}
+                    chunk.metadata['document_id'] = document_id
+                    
+                    # Add chunk to vector store
                     self.vector_store.add([chunk])
 
             conn.commit()
@@ -205,11 +217,29 @@ class VectorStoreManager:
             A list of the most similar chunks.
         """
         try:
-            return self.vector_store.query(query_embedding, similarity_top_k=top_k)
+            # Convert the query embedding to the format expected by LlamaIndex
+            query_vector = np.array(query_embedding, dtype=np.float32)
+            
+            # Create a VectorStoreQuery object with the proper format
+            vector_store_query = VectorStoreQuery(
+                query_embedding=query_vector,
+                similarity_top_k=top_k,
+                mode="default"
+            )
+            
+            # Use the query method with the proper VectorStoreQuery object
+            result = self.vector_store.query(vector_store_query)
+            
+            # Extract the nodes from the query result
+            if hasattr(result, 'nodes') and result.nodes:
+                return result.nodes
+            else:
+                logger.warning("No nodes found in vector store query result")
+                return []
+                
         except Exception as e:
             logger.error(f"Failed to retrieve chunks: {e}")
             raise RetrievalError(f"Failed to retrieve chunks: {e}") from e
-
     def delete_document(self, document_id: str):
         """
         Removes all chunks for a document from the vector store.
