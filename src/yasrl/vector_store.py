@@ -8,6 +8,8 @@ from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core.vector_stores import VectorStoreQuery 
 from psycopg2.extensions import connection
 from psycopg2.pool import SimpleConnectionPool
+from llama_index.core.vector_stores import VectorStoreQuery
+from llama_index.core.vector_stores.types import VectorStoreQueryMode
 
 from yasrl.exceptions import IndexingError, RetrievalError
 
@@ -124,7 +126,8 @@ class VectorStoreManager:
         try:
             with conn.cursor() as cursor:
                 cursor.execute(f"SELECT COUNT(DISTINCT document_id) FROM {self.table_name}")
-                return cursor.fetchone()[0]
+                row = cursor.fetchone()
+                return row[0] if row is not None else 0
         except psycopg2.Error as e:
             logger.error(f"Failed to get document count: {e}")
             return 0
@@ -222,17 +225,18 @@ class VectorStoreManager:
             
             # Create a VectorStoreQuery object with the proper format
             vector_store_query = VectorStoreQuery(
-                query_embedding=query_vector,
+                query_embedding=query_vector.tolist(),  # Convert to list for compatibility
                 similarity_top_k=top_k,
-                mode="default"
+                mode=VectorStoreQueryMode.DEFAULT
             )
             
             # Use the query method with the proper VectorStoreQuery object
             result = self.vector_store.query(vector_store_query)
             
             # Extract the nodes from the query result
-            if hasattr(result, 'nodes') and result.nodes:
-                return result.nodes
+            result_nodes = getattr(result, "nodes", None)
+            if result_nodes:
+                return result_nodes
             else:
                 logger.warning("No nodes found in vector store query result")
                 return []
