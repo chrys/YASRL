@@ -107,7 +107,9 @@ class ConfigurationManager:
             "cache_enabled": True,
             "async_processing": True,
             "log_level": "INFO",
-            "structured_logging": False
+            "structured_logging": False,
+            "log_output": "file",
+            "log_file": "yasrl.log"
         }
 
     def _load_env_config(self) -> Dict[str, Any]:
@@ -138,6 +140,8 @@ class ConfigurationManager:
             f"{prefix}ASYNC_PROCESSING": ["async_processing"],
             f"{prefix}LOG_LEVEL": ["log_level"],
             f"{prefix}STRUCTURED_LOGGING": ["structured_logging"],
+            f"{prefix}LOG_OUTPUT": ["log_output"],
+            f"{prefix}LOG_FILE": ["log_file"],
             "GOOGLE_API_KEY": ["google_api_key"],
             "OPENAI_API_KEY": ["openai_api_key"],
             "OLLAMA_HOST": ["ollama_host"],

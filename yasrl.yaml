@@ -1,0 +1,33 @@
+llm:
+  provider: "gemini"                # "openai", "gemini", or "ollama"
+  model_name: "models/gemini-2.0-flash-lite"          # For Gemini, use "gemini-pro" or similar
+  temperature: 0.7
+  max_tokens: 2048
+  timeout: 30
+  api_version: null
+  custom_params: {}
+
+embedding:
+  provider: "gemini"                # "openai", "gemini", or "opensource"
+  model_name: "gemini-embedding-001"       # For Gemini, use "embedding-001"
+  chunk_size: 1024
+  batch_size: 100
+  timeout: 30
+  custom_params: {}
+
+database:
+  table_prefix: "yasrl"
+  connection_pool_size: 10
+  vector_dimensions: 768            # 768 for Gemini, 1536 for OpenAI
+  index_type: "ivfflat"             # "ivfflat" or "hnsw"
+
+retrieval_top_k: 10
+rerank_top_k: 5
+chunk_overlap: 200
+batch_processing_size: 50
+cache_enabled: true
+async_processing: true
+log_level: "INFO"
+log_output: "file"      # "file" or "terminal"
+log_file: "yasrl.log"   # Only used if log_output is "file"
+structured_logging: false

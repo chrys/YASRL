@@ -51,11 +51,10 @@ class RAGPipeline:
             llm: The name of the language model provider.
             embed_model: The name of the embedding model provider.
         """
+        self.config_manager = ConfigurationManager()
         self._setup_logging()
         logger.info("Initializing RAG pipeline...")
-        start_time = perf_counter()
-
-        self.config_manager = ConfigurationManager()
+        start_time = perf_counter()        
         config = self.config_manager.load_config()
         self._validate_env_vars(llm, embed_model)
 
@@ -92,11 +91,23 @@ class RAGPipeline:
         )
 
     def _setup_logging(self):
-        log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
+        config = self.config_manager.load_config()
+        log_level = getattr(config, "log_level", "INFO").upper()
+        log_output = getattr(config, "log_output", "file")
+        log_file = getattr(config, "log_file", "yasrl.log")
+
+        if log_output == "file":
+            logging.basicConfig(
+                level=log_level,
+                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                filename=log_file,
+                filemode="a"
+            )
+        else:
+            logging.basicConfig(
+                level=log_level,
+                format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            )
 
     def _validate_env_vars(self, llm: str, embed_model: str):
         """Validates that the required environment variables are set."""

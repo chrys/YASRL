@@ -62,6 +62,9 @@ async def demonstrate_yasrl_system():
         )
         print("✅ Pipeline initialized successfully!")
         
+        import logging
+        logging.info("This log should appear in yasrl.log if file logging is enabled.")
+        
         # Create a sample document for demonstration
         demo_docs_path = Path("demo_docs")
         demo_docs_path.mkdir(exist_ok=True)
