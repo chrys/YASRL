@@ -16,7 +16,7 @@ embedding:
   custom_params: {}
 
 database:
-  table_prefix: "yasrl"
+  table_prefix: "VN"
   connection_pool_size: 10
   vector_dimensions: 768            # 768 for Gemini, 1536 for OpenAI
   index_type: "ivfflat"             # "ivfflat" or "hnsw"

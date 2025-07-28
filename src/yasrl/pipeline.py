@@ -73,7 +73,7 @@ class RAGPipeline:
         self.db_manager = VectorStoreManager(
             postgres_uri=config.database.postgres_uri,
             vector_dimensions=actual_embed_dim,  # Use actual dimensions from the provider
-            table_prefix=os.getenv("TABLE_PREFIX", "yasrl"),
+            table_prefix=config.database.table_prefix,
         )
         
         self.text_processor = TextProcessor(
