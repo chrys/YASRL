@@ -624,7 +624,7 @@ Complete the RAGPipeline implementation and set up the public API in src/yasrl/_
 Focus on a clean, intuitive API that handles resource management automatically and provides clear documentation.
 ```
 
-## Phase 5: Evaluation Framework
+## Phase 5: Evaluation Framework Not implemented yet 
 
 ### Step 5.1: Base Evaluator Interface
 

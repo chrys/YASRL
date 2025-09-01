@@ -1,21 +1,20 @@
 import asyncio
 import logging
 import uuid
+import os
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 
 from .pipeline import RAGPipeline
 from .models import QueryResult
 from .exceptions import ConfigurationError, IndexingError, RetrievalError
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Global pipeline storage
@@ -65,7 +64,8 @@ async def lifespan(app: FastAPI):
     # Cleanup all pipelines
     for pipeline_id, pipeline in pipelines.items():
         try:
-            await pipeline.cleanup()
+            if hasattr(pipeline, 'cleanup'):
+                await pipeline.cleanup()
             logger.info(f"Cleaned up pipeline {pipeline_id}")
         except Exception as e:
             logger.error(f"Error cleaning up pipeline {pipeline_id}: {e}")
@@ -74,7 +74,11 @@ app = FastAPI(
     title="YASRL RAG API",
     description="API for creating and using RAG pipelines with YASRL",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    root_path="/my_chatbot2/api",  # Important for reverse proxy
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 def get_pipeline(pipeline_id: str) -> RAGPipeline:
@@ -227,7 +231,8 @@ async def delete_pipeline(pipeline_id: str):
     pipeline = get_pipeline(pipeline_id)
     
     try:
-        await pipeline.cleanup()
+        if hasattr(pipeline, 'cleanup'):
+            await pipeline.cleanup()
         del pipelines[pipeline_id]
         
         logger.info(f"Successfully deleted pipeline {pipeline_id}")
@@ -249,13 +254,18 @@ async def list_pipelines():
         "count": len(pipelines)
     }
 
+@app.get("/healthz")
+async def healthz():
+    """Health check endpoint for load balancers."""
+    return {"status": "ok"}
+
 @app.get("/")
 async def root():
     """Root endpoint with API information."""
     return {
         "message": "YASRL RAG API",
         "version": "1.0.0",
-        "docs": "/docs",
+        "docs": "/my_chatbot22/api/docs",
         "active_pipelines": len(pipelines)
     }
 
