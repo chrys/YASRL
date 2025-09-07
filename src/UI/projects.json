@@ -1,0 +1,8 @@
+{
+  "0e13f04823f740b98a5f95e9e1835183": {
+    "name": "project1",
+    "llm": "gemini",
+    "embed_model": "gemini",
+    "sources": []
+  }
+}
