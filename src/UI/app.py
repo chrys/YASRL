@@ -5,6 +5,8 @@ import asyncio
 import inspect
 import logging
 from typing import Dict, List, Optional, Any, Coroutine, cast, Tuple
+# Type alias for Gradio updates (gr.update(...) returns a dict)
+UIUpdate = Dict[str, Any]
 
 import gradio as gr
 from dotenv import load_dotenv
@@ -111,7 +113,7 @@ def ensure_pipeline_for_project(pid: str) -> Optional[RAGPipeline]:
 # ---------- Admin actions (used as callbacks) ----------
 
 
-def create_project(name: str, llm: str, embed_model: str) -> Tuple[gr.update, gr.update, str]:
+def create_project(name: str, llm: str, embed_model: str) -> Tuple[UIUpdate, UIUpdate, str]:
     """
     Create project and return updates for admin_dropdown, chat_dropdown and a status string.
     Project name is taken from user input (not replaced by uuid).
@@ -130,7 +132,7 @@ def create_project(name: str, llm: str, embed_model: str) -> Tuple[gr.update, gr
     return gr.update(choices=choices, value=selected), gr.update(choices=choices, value=selected), status
 
 
-def delete_project(selected_display: str) -> Tuple[gr.update, gr.update, str]:
+def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
     pid = _display_to_pid.get(selected_display)
     if not pid:
         return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "No project selected to delete."
