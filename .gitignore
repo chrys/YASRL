@@ -191,3 +191,4 @@ src/yasrl/vasilias.py
 config_files/fasolaki.com
 config_files/fetch_files.sh
 config_files/yasrl-api.service
+data/
