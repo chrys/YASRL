@@ -10,6 +10,9 @@ UIUpdate = Dict[str, Any]
 
 import gradio as gr
 from dotenv import load_dotenv
+from pathlib import Path
+import shutil
+
 
 load_dotenv()
 
@@ -29,6 +32,7 @@ projects: Dict[str, Dict] = {}
 _display_to_pid: Dict[str, str] = {}
 
 PROJECTS_FILE = os.getenv("PROJECTS_FILE", os.path.join(os.getcwd(), "projects.json"))
+UPLOADS_DIR = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
 
 
 def load_projects() -> None:
@@ -354,7 +358,13 @@ def build_ui(run_mode: str = "local"):
                         add_source_btn = gr.Button("Add source to selected project")
                         add_source_status = gr.Markdown("")
                         add_source_btn.click(fn=add_source, inputs=[admin_dropdown, sources_box], outputs=[add_source_status, project_info, project_sources])
-
+                        
+                        # Upload area
+                        gr.Markdown("### Upload file to selected project")
+                        upload_file = gr.File(label="Upload file", file_count="single", type="filepath")
+                        upload_status = gr.Markdown("")
+                        upload_file.upload(fn=add_uploaded_file, inputs=[admin_dropdown, upload_file], outputs=[upload_status, project_info, project_sources])
+  
 
                     with gr.Column(scale=4):
                         gr.Markdown("# Admin: Projects")
@@ -385,6 +395,40 @@ def build_ui(run_mode: str = "local"):
         delete_btn.click(fn=delete_project, inputs=[admin_dropdown], outputs=[admin_dropdown, chat_dropdown, delete_status])
 
     demo.launch(server_name=host, server_port=port, share=False, inbrowser=inbrowser)
+
+# Handle uploaded file -> move to uploads/<pid>/ and index via add_source
+def add_uploaded_file(selected_display: str, uploaded_file_path: str) -> Tuple[str, str, str]:
+    pid = _display_to_pid.get(selected_display)
+    if not pid:
+        return "No project selected.", "No project selected.", "No sources."
+
+    uploaded_file_path = (uploaded_file_path or "").strip()
+    if not uploaded_file_path:
+        return "No file uploaded.", *select_project(selected_display)
+    if not os.path.isfile(uploaded_file_path):
+        return f"Uploaded file not found: {uploaded_file_path}", *select_project(selected_display)
+
+    try:
+        os.makedirs(os.path.join(UPLOADS_DIR, pid), exist_ok=True)
+        filename = os.path.basename(uploaded_file_path)
+        dest_dir = os.path.join(UPLOADS_DIR, pid)
+        dest_path = os.path.join(dest_dir, filename)
+
+        # Ensure unique filename if already exists
+        if os.path.exists(dest_path):
+            stem, ext = os.path.splitext(filename)
+            dest_path = os.path.join(dest_dir, f"{stem}_{uuid.uuid4().hex[:8]}{ext}")
+
+        # Move uploaded tmp file into project uploads directory
+        shutil.move(uploaded_file_path, dest_path)
+        logger.info("Saved uploaded file to %s", dest_path)
+
+        # Reuse existing flow to persist and index
+        return add_source(selected_display, dest_path)
+    except Exception as e:
+        logger.exception("Failed to handle uploaded file: %s", e)
+        return f"Failed to save/index uploaded file: {e}", *select_project(selected_display)
+
 
 
 if __name__ == "__main__":

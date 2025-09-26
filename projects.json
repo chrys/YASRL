@@ -1,0 +1,19 @@
+{
+  "6525df03a2d146b0851fb936dfdb2ce2": {
+    "name": "project3",
+    "llm": "gemini",
+    "embed_model": "gemini",
+    "sources": [
+      "/Users/chrys/Projects/YASRL/data/happy_payments.txt",
+      "/Users/chrys/Projects/YASRL/uploads/6525df03a2d146b0851fb936dfdb2ce2/MFA Declaration form 2024 v1.6 Completed.pdf"
+    ]
+  },
+  "f8898e1eb70e425a8dcb78c1802c9016": {
+    "name": "project4",
+    "llm": "gemini",
+    "embed_model": "gemini",
+    "sources": [
+      "/Users/chrys/Projects/YASRL/data/happy_payments.txt"
+    ]
+  }
+}
