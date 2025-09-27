@@ -17,8 +17,8 @@ import shutil
 load_dotenv()
 
 from yasrl.pipeline import RAGPipeline  # used for indexing / pipeline init
-
 from yasrl.vector_store import VectorStoreManager
+from yasrl.feedback import FeedbackManager
 
 
 
@@ -30,6 +30,8 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 projects: Dict[str, Dict] = {}
 # mapping used by UI: display string -> pid
 _display_to_pid: Dict[str, str] = {}
+# set of (pid, message_index) tuples for which feedback has been given
+_feedback_given: set[tuple[str, int]] = set()
 
 PROJECTS_FILE = os.getenv("PROJECTS_FILE", os.path.join(os.getcwd(), "projects.json"))
 UPLOADS_DIR = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
@@ -84,6 +86,15 @@ def save_projects() -> None:
 
 # Load on import/run
 load_projects()
+
+# Initialize FeedbackManager and setup feedback table
+try:
+    feedback_manager = FeedbackManager(postgres_uri=os.getenv("POSTGRES_URI") or "")
+    feedback_manager.setup_feedback_table()
+except Exception as e:
+    logger.error("Failed to initialize FeedbackManager or setup table: %s", e)
+    # Depending on requirements, you might want to exit or handle this differently
+    feedback_manager = None
 
 
 def _project_choices() -> List[str]:
@@ -317,6 +328,49 @@ def respond(selected_display: str, message: str, chat_history: Optional[List[Tup
     return "", new_history
 
 
+def clear_chat():
+    """Clear the chat history and feedback state."""
+    _feedback_given.clear()
+    return "", []
+
+
+def handle_feedback(selected_display: str, data: gr.LikeData):
+    """
+    Callback to handle feedback (like/dislike) from the user.
+    """
+    pid = _display_to_pid.get(selected_display)
+    if not pid:
+        logger.warning("Feedback received without a project selected.")
+        return
+
+    # Create a unique key for the feedback to prevent duplicates
+    feedback_key = (pid, data.index[0])
+    if feedback_key in _feedback_given:
+        logger.warning("Duplicate feedback attempt for project %s, message %d", pid, data.index[0])
+        gr.Info("You have already provided feedback for this answer.")
+        return
+
+    proj = projects.get(pid)
+    if not proj:
+        logger.warning("Feedback received for a non-existent project: %s", pid)
+        return
+
+    if feedback_manager is None:
+        logger.error("FeedbackManager is not initialized, cannot log feedback.")
+        return
+
+    try:
+        rating = "GOOD" if data.liked else "BAD"
+        project_name = proj.get("name", "Unknown")
+        answer = data.value
+        feedback_manager.add_feedback(project=project_name, chatbot_answer=answer, rating=rating)
+        _feedback_given.add(feedback_key)
+        gr.Info("Thank you for your feedback!")
+        logger.info("Feedback recorded for project '%s': %s", project_name, rating)
+    except Exception as e:
+        logger.exception("Failed to handle feedback: %s", e)
+
+
 # ---------- UI (single Gradio app with tabs) ----------
 
 
@@ -380,7 +434,7 @@ def build_ui(run_mode: str = "local"):
                 gr.Markdown("Open the Admin tab to create/manage projects and add sources.")
                 gr.Markdown("When you create/delete projects in Admin they will appear in this dropdown immediately.")
 
-                chatbot = gr.Chatbot(elem_id="chatbot", label="Chat History")
+                chatbot = gr.Chatbot(elem_id="chatbot", label="Chat History", likeable=True)
                 with gr.Row():
                     msg = gr.Textbox(placeholder="Ask your question here...", show_label=False)
                     send = gr.Button("Send")
@@ -388,7 +442,9 @@ def build_ui(run_mode: str = "local"):
 
                 msg.submit(respond, inputs=[chat_dropdown, msg, chatbot], outputs=[msg, chatbot])
                 send.click(respond, inputs=[chat_dropdown, msg, chatbot], outputs=[msg, chatbot])
-                clear.click(lambda: ("", []), inputs=None, outputs=[msg, chatbot])
+                clear.click(clear_chat, inputs=None, outputs=[msg, chatbot])
+                chatbot.like(handle_feedback, inputs=[chat_dropdown], outputs=None)
+                chat_dropdown.change(fn=clear_chat, inputs=None, outputs=[msg, chatbot])
 
         # Bind create/delete now that both dropdowns exist
         create_btn.click(fn=create_project, inputs=[name_in, llm_in, embed_in], outputs=[admin_dropdown, chat_dropdown, create_status])
