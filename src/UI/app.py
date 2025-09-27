@@ -344,9 +344,15 @@ def handle_feedback(selected_display: str, data: gr.LikeData):
         return
 
     # Create a unique key for the feedback to prevent duplicates
-    feedback_key = (pid, data.index[0])
+    # Determine the correct index value
+    if isinstance(data.index, int):
+        feedback_index = data.index
+    else:
+        feedback_index = data.index[0]
+        
+    feedback_key = (pid, feedback_index)
     if feedback_key in _feedback_given:
-        logger.warning("Duplicate feedback attempt for project %s, message %d", pid, data.index[0])
+        logger.warning("Duplicate feedback attempt for project %s, message %d", pid, feedback_index)
         gr.Info("You have already provided feedback for this answer.")
         return
 
@@ -434,7 +440,7 @@ def build_ui(run_mode: str = "local"):
                 gr.Markdown("Open the Admin tab to create/manage projects and add sources.")
                 gr.Markdown("When you create/delete projects in Admin they will appear in this dropdown immediately.")
 
-                chatbot = gr.Chatbot(elem_id="chatbot", label="Chat History", likeable=True)
+                chatbot = gr.Chatbot(elem_id="chatbot", label="Chat History")
                 with gr.Row():
                     msg = gr.Textbox(placeholder="Ask your question here...", show_label=False)
                     send = gr.Button("Send")
