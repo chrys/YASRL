@@ -20,10 +20,10 @@ class DocumentLoader:
         elif isinstance(source, str):
             if self._is_url(source):
                 return "url"
-            elif os.path.isdir(source):
-                return "directory"
             elif os.path.isfile(source):
                 return "file"
+            elif os.path.isdir(source):
+                return "directory"
         raise IndexingError(f"Unsupported source type: {source}")
 
     def load_documents(self, source: Union[str, List[str]]) -> List[Document]:

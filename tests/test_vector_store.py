@@ -110,7 +110,7 @@ class TestVectorStoreManager(unittest.TestCase):
         mock_get_connection.assert_called_once()
         self.assertEqual(mock_cursor.execute.call_count, 3)  # CREATE TABLE + 2 CREATE INDEX
         mock_conn.commit.assert_called_once()
-        mock_conn.close.assert_called_once()
+        # With connection pooling, we release the connection, not close it.
 
     @patch("yasrl.vector_store.VectorStoreManager._get_connection")
     def test_setup_schema_error(self, mock_get_connection):
@@ -126,7 +126,7 @@ class TestVectorStoreManager(unittest.TestCase):
 
         self.assertIn("Failed to set up schema", str(context.exception))
         mock_conn.rollback.assert_called_once()
-        mock_conn.close.assert_called_once()
+        # With connection pooling, we release the connection, not close it.
 
     @patch("yasrl.vector_store.VectorStoreManager._get_connection")
     @patch("yasrl.vector_store.PGVectorStore")
@@ -149,14 +149,14 @@ class TestVectorStoreManager(unittest.TestCase):
 
         self.manager.upsert_documents(document_id, chunks)
 
-        # Should be called twice: once for upsert, once for delete
-        self.assertEqual(mock_get_connection.call_count, 2)
+        # Should be called once for the single transaction
+        mock_get_connection.assert_called_once()
         mock_cursor.execute.assert_called_once_with(
             f"DELETE FROM {self.manager.table_name} WHERE metadata->>'document_id' = %s",
             (document_id,),
         )
         self.assertEqual(mock_vector_store.add.call_count, 2)  # One per chunk
-        mock_conn.commit.assert_called()
+        mock_conn.commit.assert_called_once()
 
     @patch("yasrl.vector_store.VectorStoreManager._get_connection")
     @patch("yasrl.vector_store.PGVectorStore")
