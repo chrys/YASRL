@@ -32,8 +32,8 @@ server {
 	listen 443 ssl;
 	server_name fasolaki.com www.fasolaki.com;
 	# SSL Configuration
-    ssl_certificate /etc/letsencrypt/live/fasolaki.com/fullchain.pem; # managed by Certbot
-    ssl_certificate_key /etc/letsencrypt/live/fasolaki.com/privkey.pem; # managed by Certbot
+    	ssl_certificate /etc/letsencrypt/live/fasolaki.com/fullchain.pem; # managed by Certbot
+    	ssl_certificate_key /etc/letsencrypt/live/fasolaki.com/privkey.pem; # managed by Certbot
         include /etc/letsencrypt/options-ssl-nginx.conf;
 
         # Django Chatbot App
@@ -158,6 +158,29 @@ server {
         }
 
 
+	# YASRL RAG API
+        location /my_chatbot2/api/ {
+                proxy_pass http://unix:/run/yasrl-api/yasrl-api.sock;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_set_header X-Forwarded-Prefix /my_chatbot/api;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                
+                # Timeouts for potentially long-running operations
+                proxy_connect_timeout 300s;
+                proxy_send_timeout 300s;
+                proxy_read_timeout 300s;
+                
+                # Buffer settings
+                proxy_buffering on;
+                proxy_buffer_size 128k;
+                proxy_buffers 4 256k;
+                proxy_busy_buffers_size 256k;
+        }
+
         # Deny access to .htaccess files
 
         location ~ /\.ht {
@@ -169,3 +192,4 @@ server {
 
 
 } 
+

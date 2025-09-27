@@ -188,3 +188,6 @@ YASRL.code-workspace
 .vscode/settings.json
 src/yasrl/vasilias.py
 .config_files/
+config_files/fasolaki.com
+config_files/fetch_files.sh
+config_files/yasrl-api.service

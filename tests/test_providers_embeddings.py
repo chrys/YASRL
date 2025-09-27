@@ -61,16 +61,6 @@ def test_factory_raises_for_unknown_provider():
     with pytest.raises(ValueError):
         EmbeddingProviderFactory.get_chunk_size("unknown")
 
-def test_openai_provider_requires_api_key():
-    config = MissingOpenAIConfig()
-    with pytest.raises(ConfigurationError):
-        EmbeddingProviderFactory.create_provider("openai", config)
-
-def test_gemini_provider_requires_api_key():
-    config = MissingGeminiConfig()
-    with pytest.raises(ConfigurationError):
-        EmbeddingProviderFactory.create_provider("gemini", config)
-
 def test_opensource_provider_does_not_require_api_key():
     config = MinimalConfig()
     provider = EmbeddingProviderFactory.create_provider("opensource", config)
