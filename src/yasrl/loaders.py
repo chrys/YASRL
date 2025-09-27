@@ -79,8 +79,10 @@ class DocumentLoader:
 
     def _load_from_file(self, file_path: str) -> List[Document]:
         _, extension = os.path.splitext(file_path)
-        if extension not in SimpleDirectoryReader.supported_suffix_fn():
-            raise IndexingError(f"Unsupported file type: {extension}")
+        # supported_suffix_fn method only lists suffixes that require specialized loaders
+        # (like .pdf, .docx, etc.). Plain text files are handled by a default internal mechanism.
+        #if extension not in SimpleDirectoryReader.supported_suffix_fn():
+        #   raise IndexingError(f"Unsupported file type: {extension}")
 
         reader = SimpleDirectoryReader(input_files=[file_path])
         documents = reader.load_data()

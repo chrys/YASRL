@@ -10,7 +10,7 @@ from yasrl.exceptions import IndexingError, RetrievalError
 class TestVectorStoreManager(unittest.TestCase):
     def setUp(self):
         self.postgres_uri = "postgresql://user:pass@localhost:5432/testdb"
-        self.vector_dimensions = 1536
+        self.vector_dimensions = 768
         self.table_prefix = "test"
         self.manager = VectorStoreManager(
             postgres_uri=self.postgres_uri,
@@ -52,7 +52,7 @@ class TestVectorStoreManager(unittest.TestCase):
             user="user",
             password="pass",
             table_name="test_chunks",
-            embed_dim=1536,
+            embed_dim=768,
         )
 
         # Second call should return cached instance

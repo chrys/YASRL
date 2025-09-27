@@ -128,6 +128,22 @@ class QueryResult:
     *   *Example Mapping:* `{"openai": 1024, "gemini": 1024, "opensource": 512}`.
 *   **Database Schema:** The library will operate on a "one index per database" model. It will use a default, prefixed set of table names (e.g., `srag__data`, `srag__metadata`) to store its data within the provided PostgreSQL database. The schema **must** include a column to store the `document_id` for each vector chunk to enable the upsert logic.
 
+**All projects will use a single table named `document_chunks` for storing vector data.**  
+This table should be created in your PostgreSQL database using the following SQL command:
+
+```sql
+CREATE TABLE document_chunks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- A unique ID for each chunk
+    project_id VARCHAR(255) NOT NULL,              -- The identifier for your project/use case
+    content TEXT NOT NULL,                         -- The actual text content of the chunk
+    embedding VECTOR(768),                        -- The embedding vector. Size depends on your model (e.g., 1536 for OpenAI Ada-002)
+    metadata JSONB                                 -- A flexible field for source, page number, etc.
+);
+```
+The schema **must** include a column to store the `document_id` for each vector chunk to enable the upsert logic.
+
+The field project_id will have 
+
 #### **6. Evaluation**
 
 *   To provide evaluation capabilities, the library will include a lightweight, extensible evaluation module.

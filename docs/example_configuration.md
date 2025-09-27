@@ -24,7 +24,7 @@ database:
   # postgres_uri should be set via POSTGRES_URI environment variable
   table_prefix: "yasrl"
   connection_pool_size: 10
-  vector_dimensions: 1536
+  vector_dimensions: 768
   index_type: "ivfflat"  # "ivfflat" or "hnsw"
 
 # Retrieval settings

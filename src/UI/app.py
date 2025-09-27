@@ -15,6 +15,11 @@ load_dotenv()
 
 from yasrl.pipeline import RAGPipeline  # used for indexing / pipeline init
 
+from yasrl.vector_store import VectorStoreManager
+
+
+
+
 logger = logging.getLogger("yasrl.app")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
@@ -97,7 +102,28 @@ async def _init_pipeline_async_for_project(pid: str) -> RAGPipeline:
     llm = proj.get("llm") or os.getenv("DEMO_LLM", "gemini")
     embed_model = proj.get("embed_model") or os.getenv("DEMO_EMBED_MODEL", "gemini")
     logger.info("Initializing pipeline for project %s (llm=%s embed=%s)", pid, llm, embed_model)
-    pipeline = await RAGPipeline.create(llm=llm, embed_model=embed_model)
+    
+    # Use project name instead of project ID for table naming
+    project_name = proj.get("name", "").strip()
+    # Sanitize project name for use as table name (remove special chars, spaces, etc.)
+    sanitized_name = "".join(c.lower() if c.isalnum() else "_" for c in project_name)
+    # Remove consecutive underscores and strip leading/trailing underscores
+    sanitized_name = "_".join(filter(None, sanitized_name.split("_")))
+    # Fallback to pid if name is empty after sanitization
+    table_prefix = sanitized_name if sanitized_name else pid
+
+    # Create a new vector store manager for this specific project
+    # The table prefix uses the project ID to ensure a unique table per project.
+    db_manager = VectorStoreManager(
+        postgres_uri=os.getenv("POSTGRES_URI") or "",
+        vector_dimensions=768,  # TODO: dimensions to be parameterised
+        table_prefix=table_prefix
+    )
+    pipeline = await RAGPipeline.create(
+        llm=llm,
+        embed_model=embed_model,
+        db_manager=db_manager    
+    )
     proj["pipeline"] = pipeline
     return pipeline
 
@@ -211,7 +237,7 @@ def add_source(selected_display: str, source: str) -> Tuple[str, str, str]:
         info_md, sources_md = select_project(selected_display)
         return status, info_md, sources_md
     try:
-        res = pipeline.index(source=source)
+        res = pipeline.index(source=source, project_id=pid)
         if inspect.isawaitable(res):
             asyncio.run(cast(Coroutine[Any, Any, Any], res))
         status = f"Source added and indexing started for {source}"
@@ -232,7 +258,7 @@ def index_source_for_project(selected_display: str, source: str) -> str:
     if pipeline is None:
         return "Pipeline init failed; cannot index."
     try:
-        res = pipeline.index(source=source)
+        res = pipeline.index(source=source, project_id=pid)
         if inspect.isawaitable(res):
             asyncio.run(cast(Coroutine[Any, Any, Any], res))
         return f"Indexing started for {source}"
@@ -329,11 +355,6 @@ def build_ui(run_mode: str = "local"):
                         add_source_status = gr.Markdown("")
                         add_source_btn.click(fn=add_source, inputs=[admin_dropdown, sources_box], outputs=[add_source_status, project_info, project_sources])
 
-                        gr.Markdown("### Trigger indexing (explicit)")
-                        index_box = gr.Textbox(label="Index source (URL or path)", placeholder="https://example.com/sitemap.xml")
-                        index_btn = gr.Button("Index for selected project")
-                        index_status = gr.Markdown("")
-                        index_btn.click(fn=index_source_for_project, inputs=[admin_dropdown, index_box], outputs=[index_status])
 
                     with gr.Column(scale=4):
                         gr.Markdown("# Admin: Projects")

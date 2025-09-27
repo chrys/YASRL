@@ -133,7 +133,7 @@ async def index_documents(pipeline_id: str, request: IndexRequest):
     
     try:
         logger.info(f"Indexing source '{request.source}' in pipeline {pipeline_id}")
-        await pipeline.index(request.source)
+        await pipeline.index(request.source, project_id=None)
         
         return IndexResponse(
             message=f"Successfully indexed source: {request.source}"

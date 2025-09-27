@@ -43,7 +43,7 @@ class RAGPipeline:
         ...     asyncio.run(main())
     """
 
-    def __init__(self, llm: str, embed_model: str):
+    def __init__(self, llm: str, embed_model: str, db_manager: Optional[VectorStoreManager] = None):
         """
         Initializes the RAG pipeline.
 
@@ -70,11 +70,14 @@ class RAGPipeline:
         
         logger.info(f"Using embedding dimensions: {actual_embed_dim}")
 
-        self.db_manager = VectorStoreManager(
-            postgres_uri=config.database.postgres_uri,
-            vector_dimensions=actual_embed_dim,  # Use actual dimensions from the provider
-            table_prefix=config.database.table_prefix,
-        )
+        if db_manager is not None:
+            self.db_manager = db_manager
+        else:
+            self.db_manager = VectorStoreManager(
+                postgres_uri=config.database.postgres_uri,
+                vector_dimensions=actual_embed_dim,
+                table_prefix=config.database.table_prefix,
+            )
         
         self.text_processor = TextProcessor(
             chunk_size=int(os.getenv("TEXT_CHUNK_SIZE", 1000))
@@ -130,12 +133,11 @@ class RAGPipeline:
     async def _ainit(self):
         """Asynchronously initializes the database connection pool."""
         await self.db_manager.ainit()
-        self.db_manager.setup_schema()
-
+        
     @classmethod
-    async def create(cls, llm: str, embed_model: str) -> "RAGPipeline":
+    async def create(cls, llm: str, embed_model: str, db_manager: Optional[VectorStoreManager] = None) -> "RAGPipeline":
         """Factory method to create and asynchronously initialize the pipeline."""
-        pipeline = cls(llm, embed_model)
+        pipeline = cls(llm, embed_model, db_manager=db_manager)
         await pipeline._ainit()
         return pipeline
 
@@ -184,19 +186,28 @@ class RAGPipeline:
         logger.info("Performing health check...")
         return await self.db_manager.check_connection()
 
-    async def get_statistics(self) -> dict:
+    async def get_statistics(self, project_id: str | None = None) -> dict:
         """
-        Gets statistics about the pipeline.
+        Gets statistics about the pipeline or a specific project.
+
+        Args:
+            project_id: If provided, returns stats only for this project.
 
         Returns:
-            A dictionary containing pipeline statistics, such as the number of
+            A dictionary containing pipeline or project statistics, such as the number of
             indexed documents.
         """
         logger.info("Getting pipeline statistics...")
-        document_count = await self.db_manager.get_document_count()
-        return {"indexed_documents": document_count}
+        if project_id is not None:
+            # Count only documents for this project_id
+            document_count = await self.db_manager.get_document_count(project_id=project_id)
+            return {"indexed_documents": document_count, "project_id": project_id}
+        else:
+            # Count all documents
+            document_count = await self.db_manager.get_document_count()
+            return {"indexed_documents": document_count}
 
-    async def index(self, source: str | list[str]) -> None:
+    async def index(self, source: str | list[str], project_id: str | None = None) -> None:
         """
         Indexes documents from a source, handling upserts and batching.
 
@@ -212,6 +223,9 @@ class RAGPipeline:
             >>> await pipeline.index("https://en.wikipedia.org/wiki/RAG")
         """
         logger.info(f"Starting indexing process for source: {source}")
+        # Ensure the table exists for this project
+        await self.db_manager.ensure_table_exists()
+        
         start_time = perf_counter()
         document_loader = DocumentLoader()
 
@@ -237,6 +251,11 @@ class RAGPipeline:
             try:
                 # Process the document into chunks
                 nodes = self.text_processor.process_documents([doc])
+                
+                # Inject project_id into each node's metadata
+                if project_id is not None:
+                    for node in nodes:
+                        node.metadata["project_id"] = project_id
 
                 # Generate embeddings for the chunks
                 texts = [node.text for node in nodes]

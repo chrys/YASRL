@@ -97,7 +97,7 @@ class ConfigurationManager:
                 "postgres_uri": os.getenv("POSTGRES_URI", ""),
                 "table_prefix": "yasrl",
                 "connection_pool_size": 10,
-                "vector_dimensions": 1536,
+                "vector_dimensions": 768,
                 "index_type": "ivfflat"
             },
             "retrieval_top_k": 10,

@@ -1,8 +1,16 @@
 {
-  "0e13f04823f740b98a5f95e9e1835183": {
+  "b7de4de06bf44cfeb03a6b56dbbbc524": {
     "name": "project1",
     "llm": "gemini",
     "embed_model": "gemini",
     "sources": []
+  },
+  "67a537f08ba944abaffb9a64e3361713": {
+    "name": "project2",
+    "llm": "gemini",
+    "embed_model": "gemini",
+    "sources": [
+      "/Users/chrys/Projects/YASRL/data/happy_payments.txt"
+    ]
   }
 }
