@@ -110,35 +110,13 @@ class VectorStoreManager:
         if self._pool:
             self._pool.putconn(conn)
 
-<<<<<<< HEAD
     def setup_schema(self):
         """
         Creates the required tables and indexes in the database.
-=======
-    async def check_connection(self) -> bool:
-        """
-        Checks if a connection can be established to the database.
-        """
-        conn = None
-        try:
-            conn = self._get_connection()
-            return conn is not None
-        except Exception:
-            return False
-        finally:
-            if conn:
-                self._release_connection(conn)
-
-    async def get_document_count(self, project_id: str | None = None) -> int:
-        """
-        Returns the number of documents (chunks) in the vector store.
-        If project_id is provided, counts only chunks for that project.
->>>>>>> b82e0dc (fixed indexing)
         """
         conn = self._get_connection()
         try:
             with conn.cursor() as cursor:
-<<<<<<< HEAD
                 logger.info(f"Creating table: {self.table_name}")
                 cursor.execute(f"""
                     CREATE TABLE IF NOT EXISTS {self.table_name} (
@@ -167,27 +145,6 @@ class VectorStoreManager:
             raise IndexingError(f"Failed to set up schema: {e}") from e
         finally:
             self._release_connection(conn)
-=======
-                if project_id is not None:
-                    # Count distinct documents for a specific project
-                    query = f'SELECT COUNT(DISTINCT metadata->>\'document_id\') FROM "{self.table_name}" WHERE metadata->>\'project_id\' = %s'
-                    params = (project_id,)
-                else:
-                    # Count all distinct documents in the table
-                    query = f'SELECT COUNT(DISTINCT metadata->>\'document_id\') FROM "{self.table_name}"'
-                    params = None
-                
-                cursor.execute(query, params)
-                row = cursor.fetchone()
-                return row[0] if row is not None else 0
-        except psycopg2.Error as e:
-            logger.error(f"Failed to get document count: {e}")
-            return 0
-        finally:
-            self._release_connection(conn)
-        
-        
->>>>>>> b82e0dc (fixed indexing)
 
     def upsert_documents(self, document_id: str, chunks: list):
         """
@@ -237,11 +194,6 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Failed to retrieve chunks: {e}")
             raise RetrievalError(f"Failed to retrieve chunks: {e}") from e
-<<<<<<< HEAD
-
-=======
-        
->>>>>>> b82e0dc (fixed indexing)
     def delete_document(self, document_id: str):
         """
         Removes all chunks for a document from the vector store.
@@ -275,45 +227,4 @@ class VectorStoreManager:
             logger.error(f"Failed to delete document: {e}")
             raise IndexingError(f"Failed to delete document: {e}") from e
         finally:
-<<<<<<< HEAD
             self._release_connection(conn)
-=======
-            self._release_connection(conn)
-        
-                
-    async def ensure_table_exists(self) -> bool:
-        """
-        Ensures the table exists for this project, creates it if it doesn't.
-        Returns True if table exists/was created successfully.
-        """
-        conn = self._get_connection()
-        try:
-            with conn.cursor() as cursor:
-                # Check if table exists
-                cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_name = %s
-                    )
-                """, (self.table_name,))
-                
-                row = cursor.fetchone()
-                table_exists = row[0] if row is not None else False
-
-                if not table_exists:
-                    logger.info(f"Table {self.table_name} doesn't exist, creating it...")
-                    # Let LlamaIndex create the table by accessing vector_store property
-                    # This triggers table creation in PGVectorStore
-                    _ = self.vector_store
-                    logger.info(f"Table {self.table_name} created successfully")
-                else:
-                    logger.info(f"Table {self.table_name} already exists")
-
-                return True
-            
-        except Exception as e:
-            logger.error(f"Failed to ensure table exists for {self.table_name}: {e}")
-            raise IndexingError(f"Failed to ensure table exists: {e}") from e
-        finally:
-            self._release_connection(conn)
->>>>>>> b82e0dc (fixed indexing)
