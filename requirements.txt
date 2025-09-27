@@ -6,3 +6,9 @@ pytest-mock
 black
 flake8
 mypy
+psycopg2-binary
+gradio
+llama-index-readers-web
+llama-index-llms-gemini
+llama-index-embeddings-gemini
+llama-index-vector-stores-postgres

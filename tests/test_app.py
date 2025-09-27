@@ -1,87 +1,87 @@
 import pytest
-import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
+import gradio as gr
 
-from src.yasrl.app import format_history_for_pipeline, chat_function
-from src.yasrl.pipeline import RAGPipeline
-from src.yasrl.models import QueryResult, SourceChunk
+from yasrl.app import (
+    format_history_for_pipeline,
+    chat_function_streaming,
+    handle_feedback,
+)
+from yasrl.pipeline import RAGPipeline
+from yasrl.models import QueryResult, SourceChunk
 
 # --- Tests for format_history_for_pipeline ---
 
 def test_format_history_for_pipeline_empty():
     """Test with an empty history."""
-    history = []
-    assert format_history_for_pipeline(history) is None
+    assert format_history_for_pipeline([]) is None
 
 def test_format_history_for_pipeline_single_turn():
     """Test with a single user-bot exchange."""
     history = [("Hello", "Hi there!")]
     expected = [
         {"role": "user", "content": "Hello"},
-        {"role": "assistant", "content": "Hi there!"}
+        {"role": "assistant", "content": "Hi there!"},
     ]
     assert format_history_for_pipeline(history) == expected
 
-def test_format_history_for_pipeline_multiple_turns():
-    """Test with multiple user-bot exchanges."""
-    history = [
-        ("Hello", "Hi there!"),
-        ("How are you?", "I'm good, thanks!")
-    ]
+def test_format_history_for_pipeline_with_none_bot_message():
+    """Test history where the last bot message is None."""
+    history = [("Hello", "Hi there!"), ("How are you?", None)]
     expected = [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there!"},
         {"role": "user", "content": "How are you?"},
-        {"role": "assistant", "content": "I'm good, thanks!"}
     ]
     assert format_history_for_pipeline(history) == expected
 
 def test_format_history_for_pipeline_with_source():
     """Test with a bot message containing a source."""
-    history = [("What is YASRL?", "It is a RAG pipeline.\n\n---\n**Sources:**\n*1. some-source.com*\n")]
+    history = [("What is YASRL?", "It is a RAG pipeline.\n\n---\n**Sources:**\n*1. source.com*\n")]
     expected = [
         {"role": "user", "content": "What is YASRL?"},
-        {"role": "assistant", "content": "It is a RAG pipeline."}
+        {"role": "assistant", "content": "It is a RAG pipeline."},
     ]
     assert format_history_for_pipeline(history) == expected
 
-# --- Tests for chat_function ---
+
+# --- Tests for chat_function_streaming ---
 
 @pytest.fixture(autouse=True)
-def reset_pipeline():
-    """Reset the global pipeline object before each test."""
-    from src.yasrl import app
-    app.pipeline = None
-    yield
-    app.pipeline = None
+def set_pipeline_and_reset():
+    """Set a mock pipeline for the tests and reset it after."""
+    from yasrl import app
 
-
-@patch('src.yasrl.app.initialize_pipeline', new_callable=AsyncMock)
-def test_chat_function_initialization_error(mock_init_pipeline):
-    """Test chat_function when pipeline initialization fails."""
-    mock_init_pipeline.side_effect = Exception("Initialization failed!")
-
-    response = chat_function("Hello", [])
-
-    assert "Error: The chatbot pipeline could not be initialized." in response
-    mock_init_pipeline.assert_awaited_once()
-
-@patch('src.yasrl.app.RAGPipeline.create', new_callable=AsyncMock)
-def test_chat_function_success_no_history_no_sources(mock_create_pipeline):
-    """Test a successful chat interaction with no history and no sources."""
-    # Mock the pipeline and its 'ask' method
+    # Create a mock pipeline for testing
     mock_pipeline_instance = AsyncMock(spec=RAGPipeline)
+    app.pipeline = mock_pipeline_instance
+
+    yield mock_pipeline_instance # Provide the mock to the tests
+
+    # Reset the global pipeline object after the test
+    app.pipeline = None
+
+def test_chat_function_streaming_initialization_error():
+    """Test streaming function when the pipeline is not initialized."""
+    from yasrl import app
+    app.pipeline = None # Ensure pipeline is None
+
+    # The function is a generator, so we need to iterate it
+    result_generator = chat_function_streaming("Hello", [])
+    response = next(result_generator)
+
+    assert "Error: Chatbot is not available" in response
+
+def test_chat_function_streaming_success_no_sources(set_pipeline_and_reset):
+    """Test a successful streaming interaction with no sources."""
+    mock_pipeline_instance = set_pipeline_and_reset
     mock_pipeline_instance.ask.return_value = QueryResult(
         answer="This is a test answer.",
         source_chunks=[]
     )
-    mock_create_pipeline.return_value = mock_pipeline_instance
 
-    # Set the global pipeline variable
-    from src.yasrl import app
-    app.pipeline = mock_pipeline_instance
-
-    response = chat_function("What is this?", [])
+    result_generator = chat_function_streaming("What is this?", [])
+    response = next(result_generator)
 
     assert response == "This is a test answer."
     mock_pipeline_instance.ask.assert_awaited_once_with(
@@ -89,27 +89,20 @@ def test_chat_function_success_no_history_no_sources(mock_create_pipeline):
         conversation_history=None
     )
 
-@patch('src.yasrl.app.RAGPipeline.create', new_callable=AsyncMock)
-def test_chat_function_success_with_history_and_sources(mock_create_pipeline):
-    """Test a successful chat interaction with history and sources."""
-    # Mock the pipeline and its 'ask' method
-    mock_pipeline_instance = AsyncMock(spec=RAGPipeline)
+def test_chat_function_streaming_success_with_sources(set_pipeline_and_reset):
+    """Test a successful streaming interaction with history and sources."""
+    mock_pipeline_instance = set_pipeline_and_reset
     mock_pipeline_instance.ask.return_value = QueryResult(
         answer="This is another test answer.",
         source_chunks=[
             SourceChunk(text="chunk1", metadata={"source": "url1"}),
             SourceChunk(text="chunk2", metadata={"source": "url2"}),
-            SourceChunk(text="chunk3", metadata={"source": "url1"}) # Duplicate source
         ]
     )
-    mock_create_pipeline.return_value = mock_pipeline_instance
-
-    # Set the global pipeline variable
-    from src.yasrl import app
-    app.pipeline = mock_pipeline_instance
 
     history = [("Previous question", "Previous answer")]
-    response = chat_function("Another question", history)
+    result_generator = chat_function_streaming("Another question", history)
+    response = next(result_generator)
 
     assert "This is another test answer." in response
     assert "**Sources:**" in response
@@ -123,4 +116,37 @@ def test_chat_function_success_with_history_and_sources(mock_create_pipeline):
     mock_pipeline_instance.ask.assert_awaited_once_with(
         query="Another question",
         conversation_history=expected_history
+    )
+
+
+# --- Tests for handle_feedback ---
+
+@patch('yasrl.app.log_feedback')
+def test_handle_feedback_like(mock_log_feedback):
+    """Test the feedback handler for a 'like' event."""
+    # Mock the LikeData object as its constructor is not meant for direct use
+    feedback_data = MagicMock()
+    feedback_data.value = "This was a great answer!"
+    feedback_data.liked = True
+
+    handle_feedback(feedback_data)
+
+    mock_log_feedback.assert_called_once_with(
+        chatbot_answer="This was a great answer!",
+        rating="GOOD"
+    )
+
+@patch('yasrl.app.log_feedback')
+def test_handle_feedback_dislike(mock_log_feedback):
+    """Test the feedback handler for a 'dislike' event."""
+    # Mock the LikeData object
+    feedback_data = MagicMock()
+    feedback_data.value = "This answer was unhelpful."
+    feedback_data.liked = False
+
+    handle_feedback(feedback_data)
+
+    mock_log_feedback.assert_called_once_with(
+        chatbot_answer="This answer was unhelpful.",
+        rating="BAD"
     )

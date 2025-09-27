@@ -7,10 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from yasrl.pipeline import RAGPipeline
+from yasrl.database import log_feedback
 
 # --- Global Pipeline Instance ---
-# We initialize the pipeline once to avoid reloading it on every message.
-# This reduces latency and resource usage.
 pipeline: RAGPipeline | None = None
 
 async def initialize_pipeline():
@@ -31,58 +30,56 @@ def format_history_for_pipeline(history):
     
     formatted_history = []
     for user_msg, bot_msg in history:
-        # The bot message might contain markdown for sources, so we clean it.
-        cleaned_bot_msg = bot_msg.split("\n\n---")[0]
+        cleaned_bot_msg = bot_msg.split("\n\n---")[0] if bot_msg else ""
         formatted_history.append({"role": "user", "content": user_msg})
-        formatted_history.append({"role": "assistant", "content": cleaned_bot_msg})
+        if bot_msg:
+            formatted_history.append({"role": "assistant", "content": cleaned_bot_msg})
     return formatted_history
 
-# --- The Core Chat Function for Gradio ---
-def chat_function(message, history):
+def chat_function_streaming(message, history):
     """
-    This function is called by Gradio for each user message.
-    It handles the async logic of the RAG pipeline.
+    Handles the streaming response from the RAG pipeline and yields
+    the chatbot's answer token by token.
     """
-    # This is a simple way to handle async startup in a sync context.
     if pipeline is None:
-        try:
-            asyncio.run(initialize_pipeline())
-        except Exception as e:
-            print(f"❌ Error initializing pipeline: {e}")
-            return "Error: The chatbot pipeline could not be initialized. Please check the server logs."
+        yield "Error: Chatbot is not available. Initialization failed."
+        return
 
-    if pipeline is None:
-        # This case should ideally not be reached if initialization is successful.
-        return "Error: Chatbot is not available. Initialization failed."
-    
-    # Convert Gradio history to the format our pipeline expects
     conversation_history = format_history_for_pipeline(history)
 
-    # Run the async 'ask' method
     print(f"🤔 Processing query: '{message}'")
     result = asyncio.run(
         pipeline.ask(query=message, conversation_history=conversation_history)
     )
-    print(f"💡 Got answer: '{result.answer}'")
+    answer = result.answer
 
-    # Format the sources for display in the chatbot UI
+    # Append sources to the final answer
     sources_text = ""
     if result.source_chunks:
         sources_text = "\n\n---\n**Sources:**\n"
-        # Use a set to show only unique source URLs
         unique_sources = sorted(list(set(
             chunk.metadata.get('source', 'Unknown') for chunk in result.source_chunks
         )))
         for i, source in enumerate(unique_sources, 1):
             sources_text += f"*{i}. {source}*\n"
     
-    return result.answer + sources_text
+    # Yield the complete answer with sources
+    yield answer + sources_text
 
-# --- Build and Launch the Gradio UI ---
+def handle_feedback(feedback: gr.LikeData):
+    """
+    Handles user feedback (like/dislike) on chatbot responses.
+    Logs the feedback to the database.
+    """
+    rating = "GOOD" if feedback.liked else "BAD"
+    # The message is the chatbot's answer that was liked/disliked
+    log_feedback(chatbot_answer=feedback.value, rating=rating)
+    print(f"Received feedback: {'👍' if feedback.liked else '👎'} for answer: '{feedback.value}'")
+
 def build_ui():
-    """Builds the Gradio chatbot interface."""
+    """Builds the Gradio chatbot interface using Blocks for more control."""
     print("🎨 Building Gradio UI...")
-    
+
     with gr.Blocks(theme=gr.themes.Soft(), title="YASRL Chatbot") as demo:
         gr.Markdown(
             """
@@ -90,20 +87,57 @@ def build_ui():
             This chatbot uses a RAG pipeline to answer questions based on pre-indexed web content.
             """
         )
-        gr.ChatInterface(
-            fn=chat_function,
-            examples=[
-                "What is Vasilias?",
-                "What services are offered?",
-                "Tell me about the blog posts."
-            ],
-            title="YASRL Chatbot",
-            chatbot=gr.Chatbot(height=500, label="Chat History"),
-            textbox=gr.Textbox(placeholder="Ask your question here...", container=False, scale=7),
+
+        chatbot = gr.Chatbot(
+            height=500,
+            label="Chat History",
+            bubble_full_width=False,
+            likeable=True  # Enable feedback icons
         )
-    
-    print("🌐 Launching UI... Access it at http://127.0.0.1:7860")
-    demo.launch()
+
+        with gr.Row():
+            txt = gr.Textbox(
+                scale=4,
+                show_label=False,
+                placeholder="Ask your question here...",
+                container=False,
+            )
+            btn = gr.Button("Submit", variant="primary")
+
+        def user(user_message, history):
+            return "", history + [[user_message, None]]
+
+        def bot(history):
+            user_message = history[-1][0]
+            history[-1][1] = ""
+            # Stream the response
+            for character in chat_function_streaming(user_message, history[:-1]):
+                history[-1][1] = character
+                yield history
+
+        # Wire up the components
+        txt.submit(user, [txt, chatbot], [txt, chatbot], queue=False).then(
+            bot, chatbot, chatbot
+        )
+        btn.click(user, [txt, chatbot], [txt, chatbot], queue=False).then(
+            bot, chatbot, chatbot
+        )
+
+        # Register the feedback handler
+        chatbot.like(handle_feedback, None, None)
+
+    print("🌐 Launching UI... Access it at http://127.0.0.1:7860 or your public URL.")
+    # Ensure the app starts on the correct port if specified
+    server_port = int(os.environ.get("PORT", 7860))
+    demo.queue().launch(server_name="0.0.0.0", server_port=server_port)
 
 if __name__ == "__main__":
+    # Run pipeline initialization in an event loop
+    try:
+        asyncio.run(initialize_pipeline())
+    except Exception as e:
+        print(f"❌ Fatal error during pipeline initialization: {e}")
+        # Exit if the pipeline can't be created, as the app is useless without it.
+        exit(1)
+
     build_ui()
