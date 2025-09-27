@@ -270,12 +270,15 @@ class TestConfigurationManager(unittest.TestCase):
         with self.assertRaises(ConfigurationError):
             manager.load_config()
 
-    def test_config_caching(self):
+    @patch("yasrl.config.manager.ConfigurationManager._find_config_file")
+    def test_config_caching(self, mock_find_file):
         """Test configuration caching."""
+        mock_find_file.return_value = None  # Prevent loading any config file
+
         with patch.dict(os.environ, {
             "POSTGRES_URI": "postgres://user:pass@localhost/db",
             "OPENAI_API_KEY": "sk-test",
-            }):
+        }, clear=True):
             manager = ConfigurationManager()
             config1 = manager.load_config()
             config2 = manager.load_config()
@@ -283,8 +286,9 @@ class TestConfigurationManager(unittest.TestCase):
             manager.clear_cache()
             config3 = manager.load_config()
             self.assertIsNot(config1, config3)
-            self.assertEqual(config1.llm.provider, config3.llm.provider)
-            self.assertEqual(config1.embedding.provider, config3.embedding.provider)
+            # With a clean slate, the provider should be the default 'openai'
+            self.assertEqual(config1.llm.provider, "openai")
+            self.assertEqual(config1.embedding.provider, "openai")
 
     def test_config_sources(self):
         """Test getting configuration sources."""

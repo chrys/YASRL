@@ -70,7 +70,7 @@ class VectorStoreManager:
             try:
                 self._vector_store = PGVectorStore.from_params(
                     host=self._parsed_uri.hostname,
-                    port=5432,
+                    port=self._parsed_uri.port or 5432,
                     database=self._parsed_uri.path.lstrip("/"),
                     user=self._parsed_uri.username,
                     password=self._parsed_uri.password,
@@ -94,6 +94,9 @@ class VectorStoreManager:
         Gets a connection from the pool.
         """
         if not self._pool:
+            # This is a synchronous method, so we can't await ainit.
+            # For testing purposes, if the pool is not initialized, we raise an error.
+            # In a real app, ainit() should be called at startup.
             raise IndexingError("Connection pool is not initialized.")
         return self._pool.getconn()
 
@@ -103,36 +106,6 @@ class VectorStoreManager:
         """
         if self._pool:
             self._pool.putconn(conn)
-
-    async def check_connection(self) -> bool:
-        """
-        Checks if a connection can be established to the database.
-        """
-        conn = None
-        try:
-            conn = self._get_connection()
-            return conn is not None
-        except Exception:
-            return False
-        finally:
-            if conn:
-                self._release_connection(conn)
-
-    async def get_document_count(self) -> int:
-        """
-        Gets the number of indexed documents.
-        """
-        conn = self._get_connection()
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute(f"SELECT COUNT(DISTINCT document_id) FROM {self.table_name}")
-                row = cursor.fetchone()
-                return row[0] if row is not None else 0
-        except psycopg2.Error as e:
-            logger.error(f"Failed to get document count: {e}")
-            return 0
-        finally:
-            self._release_connection(conn)
 
     def setup_schema(self):
         """
@@ -168,35 +141,29 @@ class VectorStoreManager:
             logger.error(f"Failed to set up schema: {e}")
             raise IndexingError(f"Failed to set up schema: {e}") from e
         finally:
-            conn.close() 
             self._release_connection(conn)
 
     def upsert_documents(self, document_id: str, chunks: list):
         """
-        Deletes existing chunks for a document and inserts new ones.
-
-        Args:
-            document_id: The ID of the document to upsert.
-            chunks: A list of document chunks to insert.
+        Deletes existing chunks for a document and inserts new ones in a single transaction.
         """
         conn = self._get_connection()
         try:
             with conn.cursor() as cursor:
                 logger.info(f"Deleting existing chunks for document_id: {document_id}")
-                self.delete_document(document_id)
+                cursor.execute(
+                    f"DELETE FROM {self.table_name} WHERE metadata->>'document_id' = %s",
+                    (document_id,),
+                )
 
                 logger.info(f"Inserting {len(chunks)} new chunks for document_id: {document_id}")
                 for chunk in chunks:
-                    #self.vector_store.add([chunk])
-                    #set nod ID if not present
                     if not hasattr(chunk, 'id_') or not chunk.id_:
                         chunk.id_ = str(uuid.uuid4())
-                    # Ensure metadata contains document_id
                     if not hasattr(chunk, 'metadata') or chunk.metadata is None:
                         chunk.metadata = {}
                     chunk.metadata['document_id'] = document_id
                     
-                    # Add chunk to vector store
                     self.vector_store.add([chunk])
 
             conn.commit()
@@ -211,45 +178,23 @@ class VectorStoreManager:
     def retrieve_chunks(self, query_embedding: List[float], top_k: int = 10) -> list:
         """
         Retrieves the most similar chunks from the vector store.
-
-        Args:
-            query_embedding: The embedding of the query.
-            top_k: The number of chunks to retrieve.
-
-        Returns:
-            A list of the most similar chunks.
         """
         try:
-            # Convert the query embedding to the format expected by LlamaIndex
             query_vector = np.array(query_embedding, dtype=np.float32)
-            
-            # Create a VectorStoreQuery object with the proper format
             vector_store_query = VectorStoreQuery(
-                query_embedding=query_vector.tolist(),  # Convert to list for compatibility
+                query_embedding=query_vector.tolist(),
                 similarity_top_k=top_k,
                 mode=VectorStoreQueryMode.DEFAULT
             )
-            
-            # Use the query method with the proper VectorStoreQuery object
             result = self.vector_store.query(vector_store_query)
-            
-            # Extract the nodes from the query result
-            result_nodes = getattr(result, "nodes", None)
-            if result_nodes:
-                return result_nodes
-            else:
-                logger.warning("No nodes found in vector store query result")
-                return []
-                
+            return getattr(result, "nodes", [])
         except Exception as e:
             logger.error(f"Failed to retrieve chunks: {e}")
             raise RetrievalError(f"Failed to retrieve chunks: {e}") from e
+
     def delete_document(self, document_id: str):
         """
         Removes all chunks for a document from the vector store.
-
-        Args:
-            document_id: The ID of the document to delete.
         """
         conn = self._get_connection()
         try:
