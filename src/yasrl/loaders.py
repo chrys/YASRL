@@ -54,43 +54,51 @@ class DocumentLoader:
             return False
 
     def _load_from_url(self, url: str) -> List[Document]:
+        """Loads documents from a URL and sets a standardized 'source' metadata key."""
         documents = SimpleWebPageReader(html_to_text=True).load_data([url])
-        return [
-            Document(
-                id_=self.generate_document_id(doc.metadata.get("extra_info", {}).get("Source", url) or "unknown"),
+        loaded_docs = []
+        for doc in documents:
+            # Standardize metadata to use the 'source' key
+            metadata = doc.metadata or {}
+            metadata["source"] = url 
+            
+            loaded_docs.append(Document(
+                id_=self.generate_document_id(url),
                 text=doc.get_content(),
-                metadata=doc.metadata,
-            )
-            for doc in documents
-        ]
+                metadata=metadata,
+            ))
+        return loaded_docs
 
     def _load_from_directory(self, directory_path: str) -> List[Document]:
         reader = SimpleDirectoryReader(directory_path)
         documents = reader.load_data()
-        return [
-            Document(
-                id_=self.generate_document_id(doc.metadata.get("file_path") or "unknown"),
-                text=doc.get_content(),
-                metadata=doc.metadata,
-            )
-            for doc in documents
-        ]
+        loaded_docs = []
+        for doc in documents:
+            file_path = doc.metadata.get("file_path") or "unknown"
+            # Standardize metadata to use the 'source' key
+            metadata = doc.metadata or {}
+            metadata["source"] = file_path
 
+            loaded_docs.append(Document(
+                id_=self.generate_document_id(file_path),
+                text=doc.get_content(),
+                metadata=metadata,
+            ))
+        return loaded_docs
 
     def _load_from_file(self, file_path: str) -> List[Document]:
-        _, extension = os.path.splitext(file_path)
-        # supported_suffix_fn method only lists suffixes that require specialized loaders
-        # (like .pdf, .docx, etc.). Plain text files are handled by a default internal mechanism.
-        #if extension not in SimpleDirectoryReader.supported_suffix_fn():
-        #   raise IndexingError(f"Unsupported file type: {extension}")
-
+        """Loads documents from a file and sets a standardized 'source' metadata key."""
         reader = SimpleDirectoryReader(input_files=[file_path])
         documents = reader.load_data()
-        return [
-            Document(
-                id_=self.generate_document_id(doc.metadata.get("file_path") or "unknown"),
+        loaded_docs = []
+        for doc in documents:
+            # Standardize metadata to use the 'source' key
+            metadata = doc.metadata or {}
+            metadata["source"] = file_path
+
+            loaded_docs.append(Document(
+                id_=self.generate_document_id(file_path),
                 text=doc.get_content(),
-                metadata=doc.metadata,
-            )
-            for doc in documents
-]
+                metadata=metadata,
+            ))
+        return loaded_docs

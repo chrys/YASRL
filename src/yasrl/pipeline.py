@@ -13,6 +13,7 @@ from .text_processor import TextProcessor
 from .vector_store import VectorStoreManager
 from .query_processor import QueryProcessor
 from .models import QueryResult
+from .reranker import ReRanker 
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,8 @@ class RAGPipeline:
             db_manager=self.db_manager,
         )
 
+        self.reranker = ReRanker(model_name="cross-encoder/ms-marco-TinyBERT-L-2-v2", top_n=1) 
+        
         end_time = perf_counter()
         logger.info(
             "RAG pipeline initialized in %.2f seconds.", end_time - start_time
@@ -296,11 +299,20 @@ class RAGPipeline:
         logger.info(f"Processing query: {query}")
         
         try:
-            # Get relevant chunks from the query processor
-            source_chunks = await self.query_processor.process_query(query)
+            # 1. Get relevant chunks from the query processor
+            retrieved_chunks = await self.query_processor.process_query(query, top_k=3)
             
-            # Prepare context from source chunks
-            context = "\n\n".join([chunk.text for chunk in source_chunks])
+            # 2. Re-rank the retrieved chunks
+            reranked_chunks = self.reranker.rerank(query, retrieved_chunks)
+            if not reranked_chunks:
+                logger.warning("No relevant chunks found after re-ranking.")
+                return QueryResult(
+                    answer="I'm sorry, I couldn't find any relevant information to answer your question.",
+                    source_chunks=[]
+                )
+            
+            # 3. Prepare context from source chunks
+            context = "\n\n".join([chunk.text for chunk in reranked_chunks])
             
             # Build the prompt
             system_prompt = (
@@ -339,7 +351,7 @@ class RAGPipeline:
                 else:
                     # If none of the standard methods work, create a simple response
                     logger.warning(f"Unknown LLM interface for {type(llm)}. Using fallback response.")
-                    answer = f"I found {len(source_chunks)} relevant sources but cannot generate a response with the current LLM configuration."
+                    answer = f"I found {len(reranked_chunks)} relevant sources but cannot generate a response with the current LLM configuration."
                     
             except Exception as llm_error:
                 logger.error(f"LLM call failed: {llm_error}")
@@ -348,10 +360,10 @@ class RAGPipeline:
             # Create and return the result
             result = QueryResult(
                 answer=answer.strip(),
-                source_chunks=source_chunks
+                source_chunks= reranked_chunks
             )
             
-            logger.info(f"Query processed successfully. Found {len(source_chunks)} source chunks.")
+            logger.info(f"Query processed successfully. Found {len(reranked_chunks)} source chunks.")
             return result
             
         except Exception as e:

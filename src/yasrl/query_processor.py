@@ -48,14 +48,24 @@ class QueryProcessor:
 
             # Convert results to SourceChunk objects
             source_chunks = []
-            for chunk in retrieved_chunks:
+            for node in retrieved_chunks:
                 source_chunk = SourceChunk(
-                    text=chunk.text,
-                    metadata=chunk.metadata or {},
-                    score=getattr(chunk, 'score', 0.0)
+                    text=node.text,
+                    metadata=node.metadata or {},
+                    score=getattr(node, 'score', 0.0) # Safely get score, default to 0.0
                 )
                 source_chunks.append(source_chunk)
-
+            
+            for retrieved_metadata in [chunk.metadata for chunk in source_chunks]:
+                if 'source' in retrieved_metadata:
+                    logger.info(f"Retrieved source: {retrieved_metadata['source']}")
+                if 'title' in retrieved_metadata:
+                    logger.info(f"Retrieved title: {retrieved_metadata['title']}")
+                if 'url' in retrieved_metadata:
+                    logger.info(f"Retrieved URL: {retrieved_metadata['url']}")
+            logger.info(f"Retrieved metadata {source_chunks[0].metadata} for the first chunk.")
+            
+            
             logger.info(f"Retrieved {len(source_chunks)} chunks for query: {query}")
             return source_chunks
             
