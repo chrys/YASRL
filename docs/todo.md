@@ -286,7 +286,7 @@ Create vector store management in src/yasrl/vector_store.py:
    - setup_schema(): Create required tables with proper indexing
    - upsert_documents(document_id: str, chunks: list): Delete existing chunks for document_id, then insert new ones
    - retrieve_chunks(query_embedding: list[float], top_k: int = 10): Retrieve most similar chunks
-   - delete_document(document_id: str): Remove all chunks for a document
+
 
 2. Database schema design:
    - Table: yasrl_chunks

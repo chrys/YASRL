@@ -97,36 +97,6 @@ class TestVectorStoreManager(unittest.TestCase):
 
             self.assertIn("Connection pool is not initialized.", str(context.exception))
 
-    @patch("yasrl.vector_store.VectorStoreManager._get_connection")
-    def test_setup_schema_success(self, mock_get_connection):
-        """Test successful schema setup."""
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_get_connection.return_value = mock_conn
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-
-        self.manager.setup_schema()
-
-        mock_get_connection.assert_called_once()
-        self.assertEqual(mock_cursor.execute.call_count, 3)  # CREATE TABLE + 2 CREATE INDEX
-        mock_conn.commit.assert_called_once()
-        # With connection pooling, we release the connection, not close it.
-
-    @patch("yasrl.vector_store.VectorStoreManager._get_connection")
-    def test_setup_schema_error(self, mock_get_connection):
-        """Test schema setup error handling."""
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_get_connection.return_value = mock_conn
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        mock_cursor.execute.side_effect = psycopg2.Error("Schema error")
-
-        with self.assertRaises(IndexingError) as context:
-            self.manager.setup_schema()
-
-        self.assertIn("Failed to set up schema", str(context.exception))
-        mock_conn.rollback.assert_called_once()
-        # With connection pooling, we release the connection, not close it.
 
     @patch("yasrl.vector_store.VectorStoreManager._get_connection")
     @patch("yasrl.vector_store.PGVectorStore")
@@ -181,40 +151,6 @@ class TestVectorStoreManager(unittest.TestCase):
         self.assertIn("Failed to upsert document", str(context.exception))
         mock_conn.rollback.assert_called()
 
-    @patch("yasrl.vector_store.VectorStoreManager._get_connection")
-    def test_delete_document_success(self, mock_get_connection):
-        """Test successful document deletion."""
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_get_connection.return_value = mock_conn
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-
-        document_id = "test_doc"
-        self.manager.delete_document(document_id)
-
-        mock_get_connection.assert_called_once()
-        mock_cursor.execute.assert_called_once_with(
-            f"DELETE FROM {self.manager.table_name} WHERE metadata->>'document_id' = %s",
-            (document_id,),
-        )
-        mock_conn.commit.assert_called_once()
-
-    @patch("yasrl.vector_store.VectorStoreManager._get_connection")
-    def test_delete_document_error(self, mock_get_connection):
-        """Test delete document error handling."""
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_get_connection.return_value = mock_conn
-        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
-        mock_cursor.execute.side_effect = psycopg2.Error("Delete failed")
-
-        document_id = "test_doc"
-
-        with self.assertRaises(IndexingError) as context:
-            self.manager.delete_document(document_id)
-
-        self.assertIn("Failed to delete document", str(context.exception))
-        mock_conn.rollback.assert_called_once()
 
     @patch("yasrl.vector_store.PGVectorStore")
     def test_retrieve_chunks_error(self, mock_pg_vector_store):

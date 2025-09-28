@@ -125,7 +125,7 @@ async def _init_pipeline_async_for_project(pid: str) -> RAGPipeline:
     # Remove consecutive underscores and strip leading/trailing underscores
     sanitized_name = "_".join(filter(None, sanitized_name.split("_")))
     # Fallback to pid if name is empty after sanitization
-    table_prefix = sanitized_name if sanitized_name else pid
+    table_prefix = f"yasrl_{sanitized_name or pid}"
 
     # Create a new vector store manager for this specific project
     # The table prefix uses the project ID to ensure a unique table per project.

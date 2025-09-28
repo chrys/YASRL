@@ -38,7 +38,7 @@ class VectorStoreManager:
         """
         self.postgres_uri = postgres_uri
         self.vector_dimensions = vector_dimensions
-        self.table_name = table_prefix
+        self.table_name = f"{table_prefix}_data"  
         self._vector_store: Optional[PGVectorStore] = None
         self._pool: Optional[SimpleConnectionPool] = None
 
@@ -109,75 +109,33 @@ class VectorStoreManager:
         """
         if self._pool:
             self._pool.putconn(conn)
-
-    def setup_schema(self):
-        """
-        Creates the required tables and indexes in the database.
-        """
-        conn = self._get_connection()
-        try:
-            with conn.cursor() as cursor:
-                logger.info(f"Creating table: {self.table_name}")
-                cursor.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {self.table_name} (
-                        id UUID PRIMARY KEY,
-                        document_id TEXT NOT NULL,
-                        chunk_text TEXT NOT NULL,
-                        embedding VECTOR({self.vector_dimensions}) NOT NULL,
-                        metadata JSONB,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-                    );
-                """)
-                logger.info(f"Creating index on document_id for table: {self.table_name}")
-                cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_{self.table_name}_document_id ON {self.table_name} (document_id);
-                """)
-                logger.info(f"Creating vector index on embedding for table: {self.table_name}")
-                cursor.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_{self.table_name}_embedding ON {self.table_name}
-                    USING ivfflat (embedding vector_l2_ops) WITH (lists = 100);
-                """)
-            conn.commit()
-            logger.info("Schema setup completed successfully.")
-        except psycopg2.Error as e:
-            conn.rollback()
-            logger.error(f"Failed to set up schema: {e}")
-            raise IndexingError(f"Failed to set up schema: {e}") from e
-        finally:
-            self._release_connection(conn)
+    
 
     def upsert_documents(self, document_id: str, chunks: list):
         """
-        Deletes existing chunks for a document and inserts new ones in a single transaction.
+        Deletes existing chunks for a document and inserts new ones using LlamaIndex.
         """
-        conn = self._get_connection()
         try:
-            with conn.cursor() as cursor:
-                logger.info(f"Deleting existing chunks for document_id: {document_id}")
-                cursor.execute(
-                    f"DELETE FROM {self.table_name} WHERE metadata->>'document_id' = %s",
-                    (document_id,),
-                )
+            # Delete existing chunks using LlamaIndex's delete capability
+            self.vector_store.delete(
+                ref_doc_id=document_id  
+            )
 
-                logger.info(f"Inserting {len(chunks)} new chunks for document_id: {document_id}")
-                for chunk in chunks:
-                    if not hasattr(chunk, 'id_') or not chunk.id_:
-                        chunk.id_ = str(uuid.uuid4())
-                    if not hasattr(chunk, 'metadata') or chunk.metadata is None:
-                        chunk.metadata = {}
-                    chunk.metadata['document_id'] = document_id
-                    
-                    self.vector_store.add([chunk])
-
-            conn.commit()
+            # Insert new chunks using LlamaIndex
+            for chunk in chunks:
+                if not hasattr(chunk, 'id_') or not chunk.id_:
+                    chunk.id_ = str(uuid.uuid4())
+                if not hasattr(chunk, 'metadata') or chunk.metadata is None:
+                    chunk.metadata = {}
+                chunk.metadata['document_id'] = document_id
+                
+            self.vector_store.add(chunks)
             logger.info(f"Upsert for document_id: {document_id} completed successfully.")
         except Exception as e:
-            conn.rollback()
             logger.error(f"Failed to upsert document: {e}")
             raise IndexingError(f"Failed to upsert document: {e}") from e
-        finally:
-            self._release_connection(conn)
-
+ 
+ 
     def retrieve_chunks(self, query_embedding: List[float], top_k: int = 10) -> list:
         """
         Retrieves the most similar chunks from the vector store.
@@ -194,37 +152,40 @@ class VectorStoreManager:
         except Exception as e:
             logger.error(f"Failed to retrieve chunks: {e}")
             raise RetrievalError(f"Failed to retrieve chunks: {e}") from e
-    def delete_document(self, document_id: str):
+
+    async def check_connection(self) -> bool:
         """
-        Removes all chunks for a document from the vector store.
+        Checks if a connection to the database can be established.
+        Returns True if successful, False otherwise.
+        """
+        try:
+            conn = self._get_connection()
+            self._release_connection(conn)
+            return True
+        except Exception as e:
+            logger.error(f"Database connection check failed: {e}")
+            return False
+        
+    async def get_document_count(self, project_id: str | None = None) -> int:
+        """
+        Returns the number of indexed documents, optionally filtered by project_id.
         """
         conn = self._get_connection()
         try:
             with conn.cursor() as cursor:
-                # Check if table exists before attempting delete
-                cursor.execute("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_name = %s
+                if project_id is not None:
+                    cursor.execute(
+                        f"SELECT COUNT(DISTINCT document_id) FROM {self.table_name} WHERE metadata->>'project_id' = %s",
+                        (project_id,),
                     )
-                """, (self.table_name,))
-                
+                else:
+                    cursor.execute(
+                        f"SELECT COUNT(DISTINCT document_id) FROM {self.table_name}"
+                    )
                 result = cursor.fetchone()
-                table_exists = result[0] if result is not None else False
-                if not table_exists:
-                    logger.info(f"Table {self.table_name} doesn't exist, skipping delete for document_id: {document_id}")
-                    return
-                    
-                logger.info(f"Deleting chunks for document_id: {document_id}")
-                cursor.execute(
-                    f'DELETE FROM "{self.table_name}" WHERE metadata->>\'document_id\' = %s',
-                    (document_id,),
-                )
-            conn.commit()
-            logger.info(f"Deletion for document_id: {document_id} completed successfully.")
-        except psycopg2.Error as e:
-            conn.rollback()
-            logger.error(f"Failed to delete document: {e}")
-            raise IndexingError(f"Failed to delete document: {e}") from e
+                return result[0] if result else 0
+        except Exception as e:
+            logger.error(f"Failed to get document count: {e}")
+            return 0
         finally:
             self._release_connection(conn)

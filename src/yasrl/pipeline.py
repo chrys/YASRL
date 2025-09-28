@@ -224,7 +224,7 @@ class RAGPipeline:
         """
         logger.info(f"Starting indexing process for source: {source}")
         # Ensure the table exists for this project
-        await self.db_manager.ensure_table_exists()
+        #await self.db_manager.ensure_table_exists()
         
         start_time = perf_counter()
         document_loader = DocumentLoader()
