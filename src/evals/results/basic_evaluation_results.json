@@ -1,0 +1,48 @@
+{
+  "evaluation_type": "basic",
+  "project": "Happy Payments | 1c920a21",
+  "total_questions": 3,
+  "overall_metrics": {
+    "average_quality": 0.8333333333333334,
+    "sources_provided_ratio": 1.0,
+    "good_length_ratio": 1.0
+  },
+  "detailed_results": [
+    {
+      "question": "What is Happy Payments?",
+      "answer": "Happy Payments is a company that provides payment processing services.",
+      "metrics": {
+        "answer_length": 10,
+        "good_length": true,
+        "has_sources": true,
+        "source_count": 1,
+        "keyword_relevance": 0.8571428571428571,
+        "overall_quality": 0.8333333333333334
+      }
+    },
+    {
+      "question": "What are the benefits of ISO 8583?",
+      "answer": "I am sorry, but the provided context does not contain information about the benefits of ISO 8583.",
+      "metrics": {
+        "answer_length": 17,
+        "good_length": true,
+        "has_sources": true,
+        "source_count": 1,
+        "keyword_relevance": 0.125,
+        "overall_quality": 0.8333333333333334
+      }
+    },
+    {
+      "question": "How does payment processing work?",
+      "answer": "Happy Payments uses a proprietary transaction engine built on a zero-trust architecture. Every payment is verified, encrypted with 256-bit end-to-end encryption, and monitored in real time. They also use advanced AI-driven fraud detection and continuous compliance audits.",
+      "metrics": {
+        "answer_length": 37,
+        "good_length": true,
+        "has_sources": true,
+        "source_count": 1,
+        "keyword_relevance": 0.2857142857142857,
+        "overall_quality": 0.8333333333333334
+      }
+    }
+  ]
+}

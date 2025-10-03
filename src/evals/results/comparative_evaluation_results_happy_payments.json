@@ -1,0 +1,78 @@
+{
+  "evaluation_type": "comparative",
+  "project": "Happy Payments | 1c920a21",
+  "configurations_tested": 1,
+  "questions_per_config": 4,
+  "test_questions": [
+    "What is Happy Payments?",
+    "What are the main features of ISO 8583?",
+    "How does payment processing work?",
+    "What are the benefits of standardized payment messages?"
+  ],
+  "results": [
+    {
+      "config_name": "Gemini-Standard",
+      "llm": "gemini",
+      "embed_model": "gemini",
+      "initialization_time": 5.492932081222534,
+      "average_response_time": 1.4181454181671143,
+      "average_score": 0.6727654548486074,
+      "average_source_count": 1.0,
+      "total_questions": 4,
+      "detailed_results": [
+        {
+          "response_time": 1.5180418491363525,
+          "response_time_score": 0.9493986050287883,
+          "answer_length": 10,
+          "answer_length_score": 0.2,
+          "source_count": 1,
+          "source_score": 0.3333333333333333,
+          "completeness_score": 1.0,
+          "overall_score": 0.6206829845905304,
+          "question": "What is Happy Payments?",
+          "answer": "Happy Payments is a company that provides payment processing services."
+        },
+        {
+          "response_time": 1.288902997970581,
+          "response_time_score": 0.9570365667343139,
+          "answer_length": 16,
+          "answer_length_score": 0.32,
+          "source_count": 1,
+          "source_score": 0.3333333333333333,
+          "completeness_score": 1.0,
+          "overall_score": 0.6525924750169119,
+          "question": "What are the main features of ISO 8583?",
+          "answer": "I am sorry, but the provided context does not contain the main features of ISO 8583."
+        },
+        {
+          "response_time": 1.5905909538269043,
+          "response_time_score": 0.9469803015391032,
+          "answer_length": 37,
+          "answer_length_score": 0.74,
+          "source_count": 1,
+          "source_score": 0.3333333333333333,
+          "completeness_score": 1.0,
+          "overall_score": 0.7550784087181092,
+          "question": "How does payment processing work?",
+          "answer": "Happy Payments uses a proprietary transaction engine built on a zero-trust architecture. Every payment is verified, encrypted with 256-bit end-to-end encryption, and monitored in real time. They also use advanced AI-driven fraud detection and continuous compliance audits."
+        },
+        {
+          "response_time": 1.2750458717346191,
+          "response_time_score": 0.9574984709421793,
+          "answer_length": 18,
+          "answer_length_score": 0.36,
+          "source_count": 1,
+          "source_score": 0.3333333333333333,
+          "completeness_score": 1.0,
+          "overall_score": 0.6627079510688781,
+          "question": "What are the benefits of standardized payment messages?",
+          "answer": "I am sorry, but the provided context does not contain information about the benefits of standardized payment messages."
+        }
+      ],
+      "description": "Standard Gemini configuration"
+    }
+  ],
+  "ranking": [
+    "Gemini-Standard"
+  ]
+}

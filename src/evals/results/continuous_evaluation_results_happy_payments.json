@@ -1,0 +1,408 @@
+{
+  "evaluation_type": "continuous",
+  "project": "Happy Payments | 1c920a21",
+  "monitoring_period": {
+    "start": "2025-10-03T06:24:49.936067",
+    "end": "2025-10-03T06:25:40.726270",
+    "sessions_monitored": 5
+  },
+  "overall_metrics": {
+    "total_queries": 29,
+    "success_rate": 1.0,
+    "overall_error_rate": 0.0,
+    "average_quality": 0.9619047619047618,
+    "average_response_time": 1.7404503253750014
+  },
+  "trends": {
+    "quality_scores": [
+      1.0,
+      0.9523809523809524,
+      1.0,
+      0.9047619047619048,
+      0.9523809523809524
+    ],
+    "response_times": [
+      1.4774333635965984,
+      1.4975615391850454,
+      1.9042168109357003,
+      1.7578723431251506,
+      2.065167570032512
+    ]
+  },
+  "alert_summary": {
+    "total_alerts": 0,
+    "alert_types": {}
+  },
+  "sessions": [
+    {
+      "timestamp": "2025-10-03T06:24:49.936067",
+      "total_queries": 3,
+      "successful_queries": 3,
+      "failed_queries": 0,
+      "error_rate": 0.0,
+      "avg_response_time": 1.4774333635965984,
+      "avg_quality_score": 1.0,
+      "source_availability": 1.0,
+      "alerts": [],
+      "baseline_comparison": {},
+      "status": "HEALTHY",
+      "session_name": "Morning Business Users",
+      "queries": [
+        {
+          "question": "How does Happy Payments handle transaction routing?",
+          "answer_preview": "The provided text does not contain information on how Happy Payments handles transaction routing.",
+          "response_time": 1.4976530075073242,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 14,
+          "timestamp": "2025-10-03T06:24:47.001063"
+        },
+        {
+          "question": "What is Happy Payments?",
+          "answer_preview": "Happy Payments is a company that provides payment processing services.",
+          "response_time": 1.1934950351715088,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 10,
+          "timestamp": "2025-10-03T06:24:48.194684"
+        },
+        {
+          "question": "How does ISO 8583 message format work?",
+          "answer_preview": "The ISO 8583 message format ensures compatibility between systems conforming to the standard. It use...",
+          "response_time": 1.741152048110962,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 63,
+          "timestamp": "2025-10-03T06:24:49.935944"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-10-03T06:25:01.424530",
+      "total_queries": 7,
+      "successful_queries": 7,
+      "failed_queries": 0,
+      "error_rate": 0.0,
+      "avg_response_time": 1.4975615391850454,
+      "avg_quality_score": 0.9523809523809524,
+      "source_availability": 1.0,
+      "alerts": [],
+      "baseline_comparison": {},
+      "status": "HEALTHY",
+      "session_name": "Afternoon Developers",
+      "queries": [
+        {
+          "question": "How does ISO 8583 message format work?",
+          "answer_preview": "The ISO 8583 message format ensures compatibility between systems conforming to the standard. It def...",
+          "response_time": 2.1723437765997007,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 75,
+          "timestamp": "2025-10-03T06:24:53.110878"
+        },
+        {
+          "question": "What is field 3 in ISO 8583?",
+          "answer_preview": "The provided context states that bit 3 is assigned to processing code. However, the context does not...",
+          "response_time": 1.204725980758667,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 23,
+          "timestamp": "2025-10-03T06:24:54.315715"
+        },
+        {
+          "question": "What is Happy Payments?",
+          "answer_preview": "Happy Payments is a company that provides payment processing services.",
+          "response_time": 2.2743046426259816,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 10,
+          "timestamp": "2025-10-03T06:24:56.591340"
+        },
+        {
+          "question": "Explain the payment authorization flow",
+          "answer_preview": "I am sorry, but the provided context does not contain information about the payment authorization fl...",
+          "response_time": 1.0345261096954346,
+          "quality_score": 0.6666666666666666,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 16,
+          "timestamp": "2025-10-03T06:24:57.625950"
+        },
+        {
+          "question": "What services does Happy Payments provide?",
+          "answer_preview": "The provided context describes Happy Payments as a payment processing service. It highlights feature...",
+          "response_time": 1.3204901218414307,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 24,
+          "timestamp": "2025-10-03T06:24:58.946503"
+        },
+        {
+          "question": "What security measures are used in payment processing?",
+          "answer_preview": "Happy Payments uses the following security measures:\n\n*   Proprietary transaction engine built on a ...",
+          "response_time": 1.337105089902399,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 38,
+          "timestamp": "2025-10-03T06:25:00.284900"
+        },
+        {
+          "question": "How does Happy Payments handle transaction routing?",
+          "answer_preview": "The provided text does not contain information about how Happy Payments handles transaction routing.",
+          "response_time": 1.139435052871704,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 14,
+          "timestamp": "2025-10-03T06:25:01.424423"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-10-03T06:25:11.952361",
+      "total_queries": 5,
+      "successful_queries": 5,
+      "failed_queries": 0,
+      "error_rate": 0.0,
+      "avg_response_time": 1.9042168109357003,
+      "avg_quality_score": 1.0,
+      "source_availability": 1.0,
+      "alerts": [],
+      "baseline_comparison": {},
+      "status": "HEALTHY",
+      "session_name": "Evening Support Team",
+      "queries": [
+        {
+          "question": "What are the key components of payment processing?",
+          "answer_preview": "The key components of payment processing, according to the article \"How Happy Payments Processes Bil...",
+          "response_time": 1.9472786666398554,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 42,
+          "timestamp": "2025-10-03T06:25:04.374533"
+        },
+        {
+          "question": "How does ISO 8583 message format work?",
+          "answer_preview": "The ISO 8583 message format ensures compatibility between systems conforming to the standard. It use...",
+          "response_time": 1.7369962865735973,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 60,
+          "timestamp": "2025-10-03T06:25:06.112831"
+        },
+        {
+          "question": "What security measures are used in payment processing?",
+          "answer_preview": "Happy Payments uses the following security measures:\n\n*   Proprietary transaction engine built on a ...",
+          "response_time": 1.7403011727646036,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 38,
+          "timestamp": "2025-10-03T06:25:07.854368"
+        },
+        {
+          "question": "What is field 3 in ISO 8583?",
+          "answer_preview": "The provided context states that bit 3 is assigned to processing code. However, the context does not...",
+          "response_time": 2.970819852681159,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 23,
+          "timestamp": "2025-10-03T06:25:10.826484"
+        },
+        {
+          "question": "How does Happy Payments handle transaction routing?",
+          "answer_preview": "The provided text does not contain information on how Happy Payments handles transaction routing.",
+          "response_time": 1.125688076019287,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 14,
+          "timestamp": "2025-10-03T06:25:11.952283"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-10-03T06:25:25.263439",
+      "total_queries": 7,
+      "successful_queries": 7,
+      "failed_queries": 0,
+      "error_rate": 0.0,
+      "avg_response_time": 1.7578723431251506,
+      "avg_quality_score": 0.9047619047619048,
+      "source_availability": 1.0,
+      "alerts": [],
+      "baseline_comparison": {},
+      "status": "HEALTHY",
+      "session_name": "Peak Hours Mixed",
+      "queries": [
+        {
+          "question": "What are the key components of payment processing?",
+          "answer_preview": "The key components of payment processing, according to the article \"How Happy Payments Processes Bil...",
+          "response_time": 1.6608612537384033,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 53,
+          "timestamp": "2025-10-03T06:25:14.614313"
+        },
+        {
+          "question": "How does Happy Payments handle transaction routing?",
+          "answer_preview": "The provided text does not contain information about how Happy Payments handles transaction routing.",
+          "response_time": 2.0468738602058956,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 14,
+          "timestamp": "2025-10-03T06:25:16.662519"
+        },
+        {
+          "question": "Explain the payment authorization flow",
+          "answer_preview": "I am sorry, but the provided context does not contain information about the payment authorization fl...",
+          "response_time": 1.0559091567993164,
+          "quality_score": 0.6666666666666666,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 16,
+          "timestamp": "2025-10-03T06:25:17.718522"
+        },
+        {
+          "question": "What is Happy Payments?",
+          "answer_preview": "Happy Payments is a company that provides payment processing services.",
+          "response_time": 1.706101137660577,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 10,
+          "timestamp": "2025-10-03T06:25:19.425929"
+        },
+        {
+          "question": "What security measures are used in payment processing?",
+          "answer_preview": "Happy Payments uses the following security measures:\n\n*   A proprietary transaction engine built on ...",
+          "response_time": 2.866634410008328,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 39,
+          "timestamp": "2025-10-03T06:25:22.293888"
+        },
+        {
+          "question": "What is field 3 in ISO 8583?",
+          "answer_preview": "The provided context states that bit 3 is assigned to processing code. However, it does not specify ...",
+          "response_time": 1.1980998516082764,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 21,
+          "timestamp": "2025-10-03T06:25:23.492098"
+        },
+        {
+          "question": "What services does Happy Payments provide?",
+          "answer_preview": "Happy Payments provides payment processing services.",
+          "response_time": 1.7706267318552582,
+          "quality_score": 0.6666666666666666,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 6,
+          "timestamp": "2025-10-03T06:25:25.263344"
+        }
+      ]
+    },
+    {
+      "timestamp": "2025-10-03T06:25:40.726270",
+      "total_queries": 7,
+      "successful_queries": 7,
+      "failed_queries": 0,
+      "error_rate": 0.0,
+      "avg_response_time": 2.065167570032512,
+      "avg_quality_score": 0.9523809523809524,
+      "source_availability": 1.0,
+      "alerts": [],
+      "baseline_comparison": {},
+      "status": "HEALTHY",
+      "session_name": "Weekend Light Usage",
+      "queries": [
+        {
+          "question": "What is field 3 in ISO 8583?",
+          "answer_preview": "The provided context states that bit 3 is assigned to processing code. However, it does not explicit...",
+          "response_time": 2.3764591193159457,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 25,
+          "timestamp": "2025-10-03T06:25:28.642533"
+        },
+        {
+          "question": "What is Happy Payments?",
+          "answer_preview": "Happy Payments is a company that provides payment processing services.",
+          "response_time": 1.2273258790067847,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 10,
+          "timestamp": "2025-10-03T06:25:29.871196"
+        },
+        {
+          "question": "How does ISO 8583 message format work?",
+          "answer_preview": "The ISO 8583 message format ensures compatibility between systems conforming to the standard. It use...",
+          "response_time": 2.7644531487870365,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 60,
+          "timestamp": "2025-10-03T06:25:32.636557"
+        },
+        {
+          "question": "Tell me about ISO 8583",
+          "answer_preview": "ISO 8583 is a standard for financial transaction message format. It defines the structure and conten...",
+          "response_time": 3.992646566445454,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 141,
+          "timestamp": "2025-10-03T06:25:36.630570"
+        },
+        {
+          "question": "What services does Happy Payments provide?",
+          "answer_preview": "The provided context describes Happy Payments as a payment processing service. It highlights feature...",
+          "response_time": 1.1935839653015137,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 27,
+          "timestamp": "2025-10-03T06:25:37.824242"
+        },
+        {
+          "question": "What security measures are used in payment processing?",
+          "answer_preview": "Happy Payments uses advanced AI-driven fraud detection, 256-bit end-to-end encryption, and continuou...",
+          "response_time": 1.368603229522705,
+          "quality_score": 1.0,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 25,
+          "timestamp": "2025-10-03T06:25:39.192975"
+        },
+        {
+          "question": "Explain the payment authorization flow",
+          "answer_preview": "I am sorry, but the provided context does not contain information about the payment authorization fl...",
+          "response_time": 1.5331010818481445,
+          "quality_score": 0.6666666666666666,
+          "has_sources": true,
+          "source_count": 1,
+          "answer_length": 16,
+          "timestamp": "2025-10-03T06:25:40.726170"
+        }
+      ]
+    }
+  ]
+}
