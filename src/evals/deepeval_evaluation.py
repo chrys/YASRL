@@ -59,20 +59,23 @@ async def run_deepeval_evaluation():
     selected_project = projects_data[selected_pid]
     print(f"\n✅ Selected project: {selected_display}")
 
-    # Create evaluation dataset
-    eval_dataset = [
-        # From happy_payments.txt
-        {
-            "question": "How does Happy Payments ensure the security of transactions?",
-            "expected_answer": "Happy Payments uses a zero-trust architecture, AI-driven fraud detection, 256-bit end-to-end encryption, and continuous compliance audits to secure transactions.",
-            "ground_truth": "At Happy Payments, security is at the heart of everything we do. Our proprietary transaction engine is built on a zero-trust architecture, ensuring that every payment is verified, encrypted, and monitored in real time. We use advanced AI-driven fraud detection, 256-bit end-to-end encryption, and continuous compliance audits to keep our clients’ funds safe."
-        },
-        {
-            "question": "Where is Happy Payments headquartered?",
-            "expected_answer": "Happy Payments is headquartered in Cheltenham, United Kingdom.",
-            "ground_truth": "Happy Payments is headquartered in Cheltenham, United Kingdom."
-        }, 
-    ]
+    # Load evaluation dataset from CSV
+    import csv
+    csv_path = Path(os.getenv("EVAL_DATASET_FILE", "../../data/happy_payments.csv"))
+    if not csv_path.exists():
+        print(f"❌ Could not find evaluation dataset CSV at {csv_path}")
+        return
+
+    eval_dataset = []
+    with open(csv_path, newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            # Normalize keys to match expected structure
+            eval_dataset.append({
+                "question": row.get("question", "").strip(),
+                "expected_answer": row.get("expected_answer", "").strip(),
+                "ground_truth": row.get("ground_truth", "").strip(),
+            })
 
     try:
         # 1. Initialize the RAG pipeline
