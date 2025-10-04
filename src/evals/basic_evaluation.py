@@ -76,9 +76,15 @@ class BasicEvaluator:
             int(evaluation["metrics"]["good_length"]) +
             int(evaluation["metrics"]["has_sources"]) +
             min(evaluation["metrics"]["source_count"] / 2, 1)  # Cap at 1
-        ) / 3
+        )
         evaluation["metrics"]["overall_quality"] = quality_score
+
         
+        # Eyeball test: show sources as a single line
+        sources = [chunk.metadata.get("source", "Unknown") for chunk in result.source_chunks]
+        eyeball_sources = ", ".join(sources) if sources else "No sources"
+        evaluation["metrics"]["eyeball_sources"] = eyeball_sources 
+
         return evaluation
 
 async def run_basic_evaluation():
@@ -131,8 +137,8 @@ async def run_basic_evaluation():
             "expected_answer": "Happy Payments is a company that processes payments"
         },
         {
-            "question": "What are the benefits of ISO 8583?",
-            "expected_answer": "ISO 8583 provides standardized messaging for financial transactions"
+            "question": "What is the credit car issuer response code 0?",
+            "expected_answer": "Response code 0 means the transaction was approved"
         },
         {
             "question": "How does payment processing work?",

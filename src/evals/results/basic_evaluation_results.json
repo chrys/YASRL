@@ -3,7 +3,7 @@
   "project": "Happy Payments | 1c920a21",
   "total_questions": 3,
   "overall_metrics": {
-    "average_quality": 0.8333333333333334,
+    "average_quality": 2.5,
     "sources_provided_ratio": 1.0,
     "good_length_ratio": 1.0
   },
@@ -17,19 +17,21 @@
         "has_sources": true,
         "source_count": 1,
         "keyword_relevance": 0.8571428571428571,
-        "overall_quality": 0.8333333333333334
+        "overall_quality": 2.5,
+        "eyeball_sources": "/Users/chrys/Projects/YASRL/data/happy_payments.txt"
       }
     },
     {
-      "question": "What are the benefits of ISO 8583?",
-      "answer": "I am sorry, but the provided context does not contain information about the benefits of ISO 8583.",
+      "question": "What is the credit car issuer response code 0?",
+      "answer": "The provided context includes a table of credit card issuer response codes, but it is an abbreviated section. Therefore, I cannot determine the meaning of response code 0.",
       "metrics": {
-        "answer_length": 17,
+        "answer_length": 28,
         "good_length": true,
         "has_sources": true,
         "source_count": 1,
-        "keyword_relevance": 0.125,
-        "overall_quality": 0.8333333333333334
+        "keyword_relevance": 0.375,
+        "overall_quality": 2.5,
+        "eyeball_sources": "https://www.ir.com/guides/introduction-to-iso-8583"
       }
     },
     {
@@ -41,7 +43,8 @@
         "has_sources": true,
         "source_count": 1,
         "keyword_relevance": 0.2857142857142857,
-        "overall_quality": 0.8333333333333334
+        "overall_quality": 2.5,
+        "eyeball_sources": "/Users/chrys/Projects/YASRL/data/happy_payments.txt"
       }
     }
   ]
