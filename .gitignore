@@ -199,3 +199,4 @@ src/evals/.deepeval/.deepeval-cache.json
 .gitignore
 src/evals/results/basic_evaluation_results.json
 src/evals/results/deepeval_evaluation_results_happy_payments.json
+src/evals/.deepeval/
