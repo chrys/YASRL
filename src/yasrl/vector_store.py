@@ -189,3 +189,28 @@ class VectorStoreManager:
             return 0
         finally:
             self._release_connection(conn)
+
+    async def get_all_chunks(self, project_id: str) -> List[TextNode]:
+        """
+        Retrieves all chunks for a given project_id.
+        """
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cursor:
+                # Assuming the table has 'id', 'text', 'metadata', and 'embedding' columns
+                cursor.execute(
+                    f"SELECT node_id, text, metadata, embedding FROM {self.table_name} WHERE metadata ->> 'project_id' = %s",
+                    (project_id,),
+                )
+                results = cursor.fetchall()
+                nodes = []
+                for row in results:
+                    node_id, text, metadata, embedding = row
+                    # The metadata is stored as a JSONB, so it should be a dict
+                    nodes.append(TextNode(id_=node_id, text=text, metadata=metadata, embedding=embedding))
+                return nodes
+        except Exception as e:
+            logger.error(f"Failed to get all chunks for project {project_id}: {e}")
+            return []
+        finally:
+            self._release_connection(conn)
