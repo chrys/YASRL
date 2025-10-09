@@ -153,7 +153,7 @@ def test_ask_nonexistent_pipeline(client):
 
 def test_rate_limiting(client):
     """Test that rate limiting is enforced."""
-    from src.yasrl.rate_limiter import limiter
+    from API.rate_limiter import limiter
     limiter._storage.storage.clear()
 
     headers = get_auth_headers()
