@@ -1,6 +1,5 @@
 import os
 import uuid
-import json
 import asyncio
 import inspect
 import logging
@@ -10,12 +9,12 @@ UIUpdate = Dict[str, Any]
 
 import gradio as gr
 from dotenv import load_dotenv
-from pathlib import Path
 import shutil
 
 
 load_dotenv()
 
+from UI.project_manager import get_project_manager
 from yasrl.pipeline import RAGPipeline  # used for indexing / pipeline init
 from yasrl.vector_store import VectorStoreManager
 from yasrl.feedback import FeedbackManager
@@ -26,62 +25,62 @@ from yasrl.feedback import FeedbackManager
 logger = logging.getLogger("yasrl.app")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
-# In-memory projects: key = pid (uuid hex), value = dict(name, llm, embed_model, pipeline, sources)
+# In-memory projects: key = pid (db id str), value = dict(name, llm, embed_model, pipeline, sources)
 projects: Dict[str, Dict] = {}
 # mapping used by UI: display string -> pid
 _display_to_pid: Dict[str, str] = {}
 # set of (pid, message_index) tuples for which feedback has been given
 _feedback_given: set[tuple[str, int]] = set()
 
-PROJECTS_FILE = os.getenv("PROJECTS_FILE", os.path.join(os.getcwd(), "projects.json"))
 UPLOADS_DIR = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
+
+try:
+    project_manager = get_project_manager()
+except Exception:
+    logger.exception("Failed to initialize ProjectManager; project operations will be unavailable.")
+    project_manager = None
 
 
 def load_projects() -> None:
     global projects
+    if project_manager is None:
+        logger.error("ProjectManager unavailable; cannot load projects from database.")
+        projects = {}
+        return
     try:
-        if os.path.exists(PROJECTS_FILE):
-            with open(PROJECTS_FILE, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            projects = {
-                pid: {
-                    "name": v.get("name"),
-                    "llm": v.get("llm"),
-                    "embed_model": v.get("embed_model"),
-                    "sources": v.get("sources", []),
-                    "pipeline": None,
-                }
-                for pid, v in data.items()
+        records = project_manager.list_projects()
+        projects = {
+            record["id"]: {
+                "name": record.get("name"),
+                "description": record.get("description"),
+                "llm": record.get("llm") or os.getenv("DEMO_LLM", "gemini"),
+                "embed_model": record.get("embed_model") or os.getenv("DEMO_EMBED_MODEL", "gemini"),
+                "sources": list(record.get("sources", [])),
+                "pipeline": None,
             }
-            logger.info("Loaded %d projects from %s", len(projects), PROJECTS_FILE)
-        else:
-            projects = {}
-            logger.info("No projects file found at %s, starting with empty projects", PROJECTS_FILE)
+            for record in records
+        }
+        logger.info("Loaded %d projects from database", len(projects))
     except Exception:
-        logger.exception("Failed to load projects; starting with empty projects")
+        logger.exception("Failed to load projects from database")
         projects = {}
 
 
 def save_projects() -> None:
-    try:
-        dirpath = os.path.dirname(PROJECTS_FILE) or "."
-        os.makedirs(dirpath, exist_ok=True)
-        tmp = PROJECTS_FILE + ".tmp"
-        data = {
-            pid: {
-                "name": v["name"],
-                "llm": v["llm"],
-                "embed_model": v["embed_model"],
-                "sources": v.get("sources", []),
-            }
-            for pid, v in projects.items()
-        }
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2, ensure_ascii=False)
-        os.replace(tmp, PROJECTS_FILE)
-        logger.info("Saved %d projects to %s", len(projects), PROJECTS_FILE)
-    except Exception:
-        logger.exception("Failed to save projects to %s", PROJECTS_FILE)
+    if project_manager is None:
+        logger.error("ProjectManager unavailable; cannot persist projects to database.")
+        return
+    for pid, info in projects.items():
+        try:
+            project_manager.update_project(
+                pid,
+                name=info.get("name"),
+                llm=info.get("llm"),
+                embed_model=info.get("embed_model"),
+                sources=info.get("sources", []),
+            )
+        except Exception:
+            logger.exception("Failed to synchronize project %s to database", pid)
 
 
 # Load on import/run
@@ -162,14 +161,39 @@ def create_project(name: str, llm: str, embed_model: str) -> Tuple[UIUpdate, UIU
     name = (name or "").strip() or f"project-{uuid.uuid4().hex[:6]}"
     llm = (llm or os.getenv("DEMO_LLM", "gemini")).strip()
     embed_model = (embed_model or os.getenv("DEMO_EMBED_MODEL", "gemini")).strip()
-    pid = uuid.uuid4().hex
-    projects[pid] = {"name": name, "llm": llm, "embed_model": embed_model, "sources": [], "pipeline": None}
-    save_projects()
+    if project_manager is None:
+        status = "ProjectManager unavailable; cannot create project."
+        logger.error(status)
+        choices = _project_choices()
+        return gr.update(choices=choices), gr.update(choices=choices), status
+
+    try:
+        record = project_manager.create_project(
+            name=name,
+            llm=llm,
+            embed_model=embed_model,
+            description=None,
+            sources=[],
+        )
+    except Exception as exc:
+        logger.exception("Failed to create project '%s'", name)
+        status = f"Failed to create project '{name}': {exc}"
+        choices = _project_choices()
+        return gr.update(choices=choices), gr.update(choices=choices), status
+
+    pid = record["id"]
+    projects[pid] = {
+        "name": record.get("name"),
+        "description": record.get("description"),
+        "llm": record.get("llm"),
+        "embed_model": record.get("embed_model"),
+        "sources": list(record.get("sources", [])),
+        "pipeline": None,
+    }
     choices = _project_choices()
     selected = f"{projects[pid]['name']} | {pid[:8]}"
     status = f"Created project '{name}' (llm={llm}, embed={embed_model})"
     logger.info(status)
-    # update both dropdowns (admin and chat)
     return gr.update(choices=choices, value=selected), gr.update(choices=choices, value=selected), status
 
 
@@ -180,6 +204,11 @@ def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
     proj = projects.get(pid)
     if not proj:
         return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "Project not found."
+    if project_manager is None:
+        status = "ProjectManager unavailable; cannot delete project."
+        logger.error(status)
+        choices = _project_choices()
+        return gr.update(choices=choices), gr.update(choices=choices), status
     # try cleanup if available
     try:
         pipeline_obj = proj.get("pipeline")
@@ -195,8 +224,15 @@ def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
     except Exception:
         logger.exception("Unexpected cleanup error for %s", pid)
 
+    try:
+        project_manager.delete_project(pid)
+    except Exception:
+        logger.exception("Failed to delete project %s from database", pid)
+        choices = _project_choices()
+        status = f"Failed to delete project '{proj.get('name')}'."
+        return gr.update(choices=choices), gr.update(choices=choices), status
+
     del projects[pid]
-    save_projects()
     choices = _project_choices()
     status = f"Deleted project '{proj.get('name')}' ({pid[:8]})"
     logger.info(status)
@@ -210,7 +246,36 @@ def select_project(display: str) -> Tuple[str, str]:
     pid = _display_to_pid.get(display)
     if not pid:
         return "No project selected.", "No sources."
-    info = projects.get(pid, {})
+    if project_manager is None:
+        logger.error("ProjectManager unavailable; cannot fetch project details.")
+        return "Project manager unavailable.", "No sources."
+
+    record = project_manager.get_project(pid)
+    if record is None:
+        logger.warning("Project %s not found in database during selection", pid)
+        return "Project not found.", "No sources."
+
+    info = projects.setdefault(
+        pid,
+        {
+            "name": record.get("name"),
+            "description": record.get("description"),
+            "llm": record.get("llm"),
+            "embed_model": record.get("embed_model"),
+            "sources": list(record.get("sources", [])),
+            "pipeline": None,
+        },
+    )
+    info.update(
+        {
+            "name": record.get("name"),
+            "description": record.get("description"),
+            "llm": record.get("llm"),
+            "embed_model": record.get("embed_model"),
+            "sources": list(record.get("sources", [])),
+        }
+    )
+
     sources = info.get("sources", [])
     info_md = (
         f"**Project:** {info.get('name')}\n\n"
@@ -243,8 +308,18 @@ def add_source(selected_display: str, source: str) -> Tuple[str, str, str]:
     proj.setdefault("sources", [])
     if source in proj["sources"]:
         return "Source already added.", *select_project(selected_display)
-    proj["sources"].append(source)
-    save_projects()
+    if project_manager is None:
+        status = "ProjectManager unavailable; cannot add source."
+        logger.error(status)
+        return status, *select_project(selected_display)
+
+    try:
+        record = project_manager.add_source(pid, source)
+        proj["sources"] = list(record.get("sources", []))
+    except Exception:
+        logger.exception("Failed to persist source '%s' for project %s", source, pid)
+        return "Failed to add source in database.", *select_project(selected_display)
+
     # attempt to index immediately if pipeline available
     pipeline = ensure_pipeline_for_project(pid)
     if pipeline is None:
@@ -429,7 +504,7 @@ def build_ui(run_mode: str = "local"):
                     with gr.Column(scale=4):
                         gr.Markdown("# Admin: Projects")
                         gr.Markdown(
-                            "Use this tab to create projects (persisted to projects.json), delete them, and add sources for a selected project."
+                            "Use this tab to create projects (stored in PostgreSQL), delete them, and add sources for a selected project."
                         )
                         gr.Markdown("Switch to the 'Chat' tab to ask questions for a selected project.")
 
