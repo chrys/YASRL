@@ -1,16 +1,12 @@
 import asyncio
 import logging
 import os
-import json
-from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 
 from API.auth import get_current_user
 from API.auth import create_access_token
@@ -21,6 +17,7 @@ from yasrl.config.manager import ConfigurationManager
 
 from API.pipeline_cache import pipeline_cache
 from yasrl.exceptions import IndexingError, RetrievalError, ConfigurationError
+from UI.project_manager import get_project_manager
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -90,6 +87,12 @@ app = FastAPI(
 app.state.limiter = limiter 
 app.add_middleware(SlowAPIMiddleware)
 
+try:
+    project_manager = get_project_manager()
+except Exception:
+    logging.exception("Failed to initialize ProjectManager for API.")
+    project_manager = None
+
 @app.post("/pipelines", status_code=201)
 @limiter.limit("10/minute")
 async def create_pipeline_endpoint(
@@ -108,16 +111,16 @@ async def create_pipeline_endpoint(
     print(f"DEBUG: Using project: {project_name} ({project_id})")
     print(f"DEBUG: Current user data: {current_user}")  # Add this debug line
 
-    # Load project configuration
-    projects = load_projects()
-    if project_id not in projects:
-        raise HTTPException(status_code=500, detail=f"Project {project_id} not found")
-    
-    project_config = projects[project_id]
-    
-    # Use project's LLM and embed model (ignore request values)
-    llm = project_config.get("llm", "gemini")
-    embed_model = project_config.get("embed_model", "gemini")
+    if project_manager is None:
+        raise HTTPException(status_code=500, detail="Project manager unavailable.")
+
+    project_record = project_manager.get_project(project_id)
+    if project_record is None:
+        raise HTTPException(status_code=500, detail=f"Project {project_id} not found in database")
+
+    llm = project_record.get("llm") or create_request.llm
+    embed_model = project_record.get("embed_model") or create_request.embed_model
+    project_display_name = project_record.get("name") or project_name
     
     print(f"DEBUG: Project config - LLM: {llm}, Embed model: {embed_model}")
 
@@ -126,16 +129,16 @@ async def create_pipeline_endpoint(
             pipeline_id, 
             llm, 
             embed_model,
-            project_id=project_id
+            project_id=project_record["id"]
         )
         
         print(f"DEBUG: Pipeline created. Cache now contains: {list(pipeline_cache._pipelines.keys())}")
         
         return {
-            "message": f"Pipeline created successfully using project '{project_name}'",
+            "message": f"Pipeline created successfully using project '{project_display_name}'",
             "pipeline_id": pipeline_id,
-            "project_name": project_name,
-            "project_id": project_id
+            "project_name": project_display_name,
+            "project_id": project_record["id"]
         }
     except ConfigurationError as e:
         print(f"DEBUG: Configuration error: {e}")
@@ -164,7 +167,8 @@ async def index_documents_endpoint(
         raise HTTPException(status_code=404, detail="Pipeline not found or has expired.")
 
     try:
-        await pipeline.index(index_request.source, project_id=decoded_pipeline_id)
+        project_id = current_user.get("project_id")
+        await pipeline.index(index_request.source, project_id=project_id)
         return IndexResponse(message=f"Successfully indexed source: {index_request.source}")
     except IndexingError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -246,22 +250,25 @@ async def login_for_access_token(token_request: TokenRequest):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
     
     user_config = USER_PROJECT_MAPPING[token_request.username]
-    project_id = user_config["project_id"]
-    
-    # Load and validate project exists
-    projects = load_projects()
-    if project_id not in projects:
-        raise HTTPException(status_code=500, detail=f"Project {project_id} not found in projects.json")
-    
-    project_config = projects[project_id]
-    
-    # Create token payload with project information
+
+    if project_manager is None:
+        raise HTTPException(status_code=500, detail="Project manager unavailable.")
+
+    project_record = None
+    if "project_id" in user_config:
+        project_record = project_manager.get_project(user_config["project_id"])
+    if project_record is None and "project_name" in user_config:
+        project_record = project_manager.get_project_by_name(user_config["project_name"])
+
+    if project_record is None:
+        raise HTTPException(status_code=500, detail="Associated project not found in database.")
+
     payload = {
         "sub": token_request.username,
         "user_id": token_request.username,
         "website_id": user_config["website_id"],
-        "project_id": project_id,
-        "project_name": project_config.get("name", "Unknown Project")
+        "project_id": project_record["id"],
+        "project_name": project_record.get("name", "Unknown Project")
     }
     
     access_token = create_access_token(payload)
@@ -276,25 +283,11 @@ async def login_for_access_token(token_request: TokenRequest):
 USER_PROJECT_MAPPING = {
     "happy_user": {
         "password": "happy_pass123",
-        "project_id": "1c920a21136444a099fc6450542d405b",
+        "project_name": "Happy Payments",
         "website_id": "happy_payments"
     },
     # Add more users/projects here as needed
-    # "website2_user": {
-    #     "password": "website2_pass456", 
-    #     "project_id": "another_project_id",
-    #     "website_id": "website2"
-    # }
 }
-
-def load_projects() -> Dict[str, Dict]:
-    """Load projects from projects.json"""
-    projects_path = Path(os.getenv("PROJECTS_FILE", "projects.json"))
-    if not projects_path.exists():
-        return {}
-    
-    with open(projects_path, "r") as f:
-        return json.load(f)
 
 
 if __name__ == "__main__":

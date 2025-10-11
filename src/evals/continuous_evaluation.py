@@ -13,7 +13,7 @@ import time
 import random
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # Add src to path for imports
 import sys
@@ -21,13 +21,14 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from yasrl.pipeline import RAGPipeline
 from yasrl.models import QueryResult
+from UI.project_manager import get_project_manager
 
 class ContinuousEvaluator:
     """
     Evaluator for continuous monitoring of RAG performance
     """
     
-    def __init__(self, baseline_metrics: Dict[str, float] = None):
+    def __init__(self, baseline_metrics: Optional[Dict[str, float]] = None):
         self.baseline_metrics = baseline_metrics or {}
         self.alert_thresholds = {
             "response_time": 10.0,  # Alert if response time > 10 seconds
@@ -229,26 +230,24 @@ async def run_continuous_evaluation():
     print("This demo simulates continuous monitoring of RAG performance")
     print("over multiple user sessions, tracking quality and detecting issues.")
 
-    # Load projects from projects.json
-    projects_path = Path(os.getenv("PROJECTS_FILE", "projects.json"))
-    if not projects_path.exists():
-        print(f"❌ Could not find projects file at {projects_path}")
+    try:
+        project_manager = get_project_manager()
+    except Exception as exc:
+        print(f"❌ Unable to initialize ProjectManager: {exc}")
         return
 
-    with open(projects_path, "r") as f:
-        projects_data = json.load(f)
-
-    if not projects_data:
-        print("❌ No projects found in projects.json.")
+    project_records = project_manager.list_projects()
+    if not project_records:
+        print("❌ No projects found in database.")
         return
 
     # List available projects
     print("Available projects:")
     project_choices = []
-    for pid, info in projects_data.items():
-        display = f"{info['name']} | {pid[:8]}"
-        project_choices.append((display, pid))
-        print(f"  {len(project_choices)}. {display}")
+    for idx, record in enumerate(project_records, start=1):
+        display = f"{record['name']} | {record['id'][:8]}"
+        project_choices.append((display, record))
+        print(f"  {idx}. {display}")
 
     # Prompt user to select a project
     while True:
@@ -261,8 +260,8 @@ async def run_continuous_evaluation():
         except Exception:
             print("Please enter a valid number.")
 
-    selected_display, selected_pid = project_choices[selection - 1]
-    selected_project = projects_data[selected_pid]
+    selected_display, selected_project = project_choices[selection - 1]
+    selected_pid = selected_project["id"]
     print(f"\n✅ Selected project: {selected_display}")
 
     try:
@@ -363,9 +362,9 @@ async def run_continuous_evaluation():
         for session in all_sessions:
             all_alerts.extend(session['alerts'])
 
+        alert_counts: Dict[str, int] = {}
         if all_alerts:
             print(f"\n⚠️  Alert Summary ({len(all_alerts)} total):")
-            alert_counts = {}
             for alert in all_alerts:
                 alert_type = alert.split(':')[0]
                 alert_counts[alert_type] = alert_counts.get(alert_type, 0) + 1

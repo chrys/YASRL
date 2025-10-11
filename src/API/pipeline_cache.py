@@ -1,12 +1,21 @@
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict
 
+from UI.project_manager import get_project_manager
 from src.yasrl.pipeline import RAGPipeline
 from src.yasrl.exceptions import ConfigurationError
+from src.yasrl.vector_store import VectorStoreManager
 
 logger = logging.getLogger(__name__)
+
+try:
+    project_manager = get_project_manager()
+except Exception:
+    logger.exception("Failed to initialize ProjectManager for pipeline cache.")
+    project_manager = None
 
 class PipelineCache:
     """
@@ -49,44 +58,30 @@ class PipelineCache:
                 await self.delete_pipeline(pipeline_id)
     
             # Create pipeline with project-specific configuration if project_id is provided
-            if project_id:
-                # Load project configuration to get table naming
-                import json
-                import os
-                from pathlib import Path
-                from yasrl.vector_store import VectorStoreManager
-                
-                projects_path = Path(os.getenv("PROJECTS_FILE", "projects.json"))
-                if projects_path.exists():
-                    with open(projects_path, "r") as f:
-                        projects = json.load(f)
-                    
-                    project_config = projects.get(project_id, {})
-                    project_name = project_config.get("name", "").strip()
-                    
-                    # Use the same table naming logic as in your UI
+            if project_id and project_manager is not None:
+                project_record = project_manager.get_project(project_id)
+                if project_record is None:
+                    logger.warning("Project %s not found in database; creating pipeline without project-specific config", project_id)
+                    pipeline = await RAGPipeline.create(llm=llm, embed_model=embed_model)
+                else:
+                    project_name = (project_record.get("name") or "").strip()
                     sanitized_name = "".join(c.lower() if c.isalnum() else "_" for c in project_name)
                     sanitized_name = "_".join(filter(None, sanitized_name.split("_")))
-                    table_prefix = f"yasrl_{sanitized_name or project_id}"
-                    
-                    logger.info(f"Using project-specific table prefix: {table_prefix}")
-                    
-                    # Create database manager with project-specific table prefix
+                    table_prefix = f"yasrl_{sanitized_name or project_record['id']}"
+
+                    logger.info("Using project-specific table prefix: %s", table_prefix)
+
                     db_manager = VectorStoreManager(
                         postgres_uri=os.getenv("POSTGRES_URI") or "",
                         vector_dimensions=768,
-                        table_prefix=table_prefix
+                        table_prefix=table_prefix,
                     )
-                    
-                    # Create pipeline with custom database manager
+
                     pipeline = await RAGPipeline.create(
                         llm=llm,
                         embed_model=embed_model,
-                        db_manager=db_manager
+                        db_manager=db_manager,
                     )
-                else:
-                    logger.warning(f"projects.json not found, creating pipeline without project-specific config")
-                    pipeline = await RAGPipeline.create(llm=llm, embed_model=embed_model)
             else:
                 # Default pipeline creation without project-specific config
                 pipeline = await RAGPipeline.create(llm=llm, embed_model=embed_model)

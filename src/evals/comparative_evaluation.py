@@ -19,6 +19,7 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from yasrl.pipeline import RAGPipeline
 from yasrl.models import QueryResult
+from UI.project_manager import get_project_manager
 
 class ComparativeEvaluator:
     """
@@ -84,26 +85,24 @@ async def run_comparative_evaluation():
     print("⚖️  Comparative RAG Evaluation Demo")
     print("=" * 50)
 
-    # Load projects from projects.json
-    projects_path = Path(os.getenv("PROJECTS_FILE", "projects.json"))
-    if not projects_path.exists():
-        print(f"❌ Could not find projects file at {projects_path}")
+    try:
+        project_manager = get_project_manager()
+    except Exception as exc:
+        print(f"❌ Unable to initialize ProjectManager: {exc}")
         return
 
-    with open(projects_path, "r") as f:
-        projects_data = json.load(f)
-
-    if not projects_data:
-        print("❌ No projects found in projects.json.")
+    project_records = project_manager.list_projects()
+    if not project_records:
+        print("❌ No projects found in database.")
         return
 
     # List available projects
     print("Available projects:")
     project_choices = []
-    for pid, info in projects_data.items():
-        display = f"{info['name']} | {pid[:8]}"
-        project_choices.append((display, pid))
-        print(f"  {len(project_choices)}. {display}")
+    for idx, record in enumerate(project_records, start=1):
+        display = f"{record['name']} | {record['id'][:8]}"
+        project_choices.append((display, record))
+        print(f"  {idx}. {display}")
 
     # Prompt user to select a project
     while True:
@@ -116,8 +115,8 @@ async def run_comparative_evaluation():
         except Exception:
             print("Please enter a valid number.")
 
-    selected_display, selected_pid = project_choices[selection - 1]
-    selected_project = projects_data[selected_pid]
+    selected_display, selected_project = project_choices[selection - 1]
+    selected_pid = selected_project["id"]
     print(f"\n✅ Selected project: {selected_display}")
 
     # Define test questions
