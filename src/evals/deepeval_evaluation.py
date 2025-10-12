@@ -18,32 +18,75 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from yasrl.pipeline import RAGPipeline
 
-# DeepEval imports
+import logging
 from deepeval import evaluate
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric, ContextualPrecisionMetric, ContextualRecallMetric
 from deepeval.test_case import LLMTestCase
-from deepeval.models import GeminiModel
+from deepeval.synthesizer import Synthesizer
+from deepeval.dataset import EvaluationDataset
+
+from .deepeval_gemini import Gemini as DeepEvalGemini
+
+logger = logging.getLogger(__name__)
+
+from llama_index.core import Document
+
+async def generate_evaluation_dataset(
+    documents: list[Document],
+    model: str = "gemini-1.5-flash",
+    max_questions: int = 10,
+) -> EvaluationDataset:
+    """
+    Generates an evaluation dataset (QA pairs) from a list of documents
+    using DeepEval's Synthesizer and a Gemini model.
+    """
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GOOGLE_API_KEY environment variable not set.")
+
+    # Use the custom Gemini wrapper for the synthesizer
+    generator_model = DeepEvalGemini(model=model, api_key=api_key)
+
+    synthesizer = Synthesizer(
+        model=generator_model,
+        # You can customize the synthesizer with different prompts if needed
+        # See DeepEval documentation for more details
+    )
+
+    logger.info(f"Generating up to {max_questions} questions from {len(documents)} documents...")
+
+    # Generate the dataset
+    dataset = EvaluationDataset()
+    dataset.generate(
+        documents=documents,
+        max_questions=max_questions,
+        synthesizer=synthesizer,
+    )
+
+    logger.info(f"Successfully generated {len(dataset.test_cases)} QA pairs.")
+    return dataset
+
 
 async def run_deepeval_evaluation():
-    print("🔬 DeepEval RAG Evaluation Demo with Gemini")
-    print("=" * 50)
+    logger.info("🔬 DeepEval RAG Evaluation Demo with Gemini")
+    logger.info("=" * 50)
 
     # Load projects from projects.json
     projects_path = Path(os.getenv("PROJECTS_FILE", "projects.json"))
     if not projects_path.exists():
-        print(f"❌ Could not find projects file at {projects_path}")
+        logger.error(f"Could not find projects file at {projects_path}")
         return
 
     with open(projects_path, "r") as f:
         projects_data = json.load(f)
 
     # Prompt user to select a project
-    print("Available projects:")
+    logger.info("Available projects:")
     project_choices = []
     for pid, info in projects_data.items():
         display = f"{info['name']} | {pid[:8]}"
         project_choices.append((display, pid))
-        print(f"  {len(project_choices)}. {display}")
+        logger.info(f"  {len(project_choices)}. {display}")
 
     while True:
         try:
@@ -51,19 +94,19 @@ async def run_deepeval_evaluation():
             if 1 <= selection <= len(project_choices):
                 break
             else:
-                print("Invalid selection. Try again.")
+                logger.warning("Invalid selection. Try again.")
         except Exception:
-            print("Please enter a valid number.")
+            logger.warning("Please enter a valid number.")
 
     selected_display, selected_pid = project_choices[selection - 1]
     selected_project = projects_data[selected_pid]
-    print(f"\n✅ Selected project: {selected_display}")
+    logger.info(f"✅ Selected project: {selected_display}")
 
     # Load evaluation dataset from CSV
     import csv
     csv_path = Path(os.getenv("EVAL_DATASET_FILE", "../../data/happy_payments.csv"))
     if not csv_path.exists():
-        print(f"❌ Could not find evaluation dataset CSV at {csv_path}")
+        logger.error(f"Could not find evaluation dataset CSV at {csv_path}")
         return
 
     eval_dataset = []
@@ -79,7 +122,7 @@ async def run_deepeval_evaluation():
 
     try:
         # 1. Initialize the RAG pipeline
-        print("1. Initializing RAG Pipeline...")
+        logger.info("1. Initializing RAG Pipeline...")
         from yasrl.vector_store import VectorStoreManager
         project_name = selected_project.get("name", "").strip()
         sanitized_name = "".join(c.lower() if c.isalnum() else "_" for c in project_name)
@@ -94,24 +137,23 @@ async def run_deepeval_evaluation():
             embed_model=selected_project.get("embed_model", "gemini"),
             db_manager=db_manager
         )
-        print("✅ Pipeline initialized")
+        logger.info("✅ Pipeline initialized")
 
         # 2. Configure DeepEval to use Gemini for evaluation
-        print("\n2. Configuring DeepEval with Gemini model...")
+        logger.info("Configuring DeepEval with Gemini model...")
         # This tells DeepEval's metrics to use Gemini for judging the results
-        #get the Gemini API key from .env
         gemini_api_key = os.getenv("GOOGLE_API_KEY")
         if not gemini_api_key:
             raise ValueError("GOOGLE_API_KEY not set in environment variables")
-        else:
-            gemini_eval_model = GeminiModel(
-                model_name="gemini-2.5-flash",
-                api_key=gemini_api_key,
-            )
-        print("✅ DeepEval configured")
+
+        gemini_eval_model = DeepEvalGemini(
+            model_name="gemini-1.5-flash",
+            api_key=gemini_api_key,
+        )
+        logger.info("✅ DeepEval configured")
 
         # 3. Run pipeline and create DeepEval Test Cases
-        print("\n3. Running RAG pipeline and creating test cases...")
+        logger.info("Running RAG pipeline and creating test cases...")
         test_cases = []
         for item in eval_dataset:
             question = item["question"]
@@ -128,30 +170,20 @@ async def run_deepeval_evaluation():
                 context=[ground_truth_context]  # Provide ground truth as context for faithfulness check
             )
             test_cases.append(test_case)
-            print(f"  - Created test case for: '{question}'")
+            logger.info(f"  - Created test case for: '{question}'")
 
         # 4. Define metrics and run evaluation
-        print("\n4. Evaluating with DeepEval metrics...")
+        logger.info("Evaluating with DeepEval metrics...")
         metrics = [
-            # Is the generated answer relevant to the input question? (Score 0-1)
             AnswerRelevancyMetric(model=gemini_eval_model, threshold=0.7),
-            
-            # Does the answer stick to the facts in the retrieved context? (Score 0-1, 1 means no hallucination)
             FaithfulnessMetric(model=gemini_eval_model, threshold=0.7),
-            
-            # Did the retriever find all the relevant information from the ground truth to answer the question? (Score 0-1)
             ContextualPrecisionMetric(model=gemini_eval_model, threshold=0.8),
-            
-            # Is the retrieved context relevant to the question? (High precision means less "noise" was retrieved). (Score 0-1)
             ContextualRecallMetric(model=gemini_eval_model, threshold=0.8)
         ]
 
-        # The evaluate function runs the metrics against the test cases
         results = evaluate(test_cases, metrics)
 
-        print("\n📊 DeepEval Evaluation Results:")
-        # The results object contains detailed information for each test case
-        # For a summary, we can calculate the average scores
+        logger.info("📊 DeepEval Evaluation Results:")
         total_scores = {}
         for metric in metrics:
             total_scores[metric.__name__] = 0
@@ -163,20 +195,17 @@ async def run_deepeval_evaluation():
                 total_scores.setdefault(metric_result.__class__.__name__, 0.0)
                 total_scores[metric_result.__class__.__name__] += metric_result.score
 
-        print("Average Scores:")
-        # Check if results were generated before dividing
+        logger.info("Average Scores:")
         if results.test_results:
             for name, total_score in total_scores.items():
                 avg_score = total_score / len(results.test_results)
-                print(f"  - {name}: {avg_score:.3f}")
+                logger.info(f"  - {name}: {avg_score:.3f}")
         else:
-            print("  - No results to average.")
+            logger.info("  - No results to average.")
 
-        # Save results to file
         output_file = Path("./results") / f"deepeval_evaluation_results_{sanitized_name or selected_pid}.json"
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
-        # DeepEval results are not directly JSON serializable, so we format them
         serializable_results = []
         for result in results.test_results:
             metric_entries = []
@@ -200,12 +229,12 @@ async def run_deepeval_evaluation():
                 "results": serializable_results
             }, f, indent=2)
 
-        print(f"\n💾 DeepEval evaluation results saved to: {output_file}")
+        logger.info(f"💾 DeepEval evaluation results saved to: {output_file}")
 
         await pipeline.cleanup()
 
     except Exception as e:
-        print(f"❌ Error during DeepEval evaluation: {e}")
+        logger.exception(f"Error during DeepEval evaluation: {e}")
         raise
 
 if __name__ == "__main__":

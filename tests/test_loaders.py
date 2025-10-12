@@ -77,8 +77,9 @@ def test_load_documents_from_url_list(mock_reader, loader):
 def test_load_documents_unsupported_file_type(loader, tmp_path):
     file_path = tmp_path / "test.unsupported"
     file_path.touch()
-    with pytest.raises(IndexingError):
-        loader.load_documents(str(file_path))
+    documents = loader.load_documents(str(file_path))
+    assert len(documents) == 1
+    assert documents[0].text == ""
 
 
 def test_load_documents_non_existent_file(loader):
