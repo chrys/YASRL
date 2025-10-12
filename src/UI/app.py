@@ -377,6 +377,8 @@ def handle_feedback(selected_display: str, data: gr.LikeData):
         logger.exception("Failed to handle feedback: %s", e)
 
 
+from .evaluation import build_evaluation_tab
+
 # ---------- UI (single Gradio app with tabs) ----------
 
 
@@ -451,6 +453,14 @@ def build_ui(run_mode: str = "local"):
                 clear.click(clear_chat, inputs=None, outputs=[msg, chatbot])
                 chatbot.like(handle_feedback, inputs=[chat_dropdown], outputs=None)
                 chat_dropdown.change(fn=clear_chat, inputs=None, outputs=[msg, chatbot])
+
+            # Evaluation tab
+            (
+                eval_project_dropdown, eval_sources_dropdown, qa_status_message,
+                load_qa_button, num_qa_pairs, generate_qa_button,
+                qa_pairs_editor, save_qa_button, save_status_message
+            ) = build_evaluation_tab(projects, _display_to_pid)
+
 
         # Bind create/delete now that both dropdowns exist
         create_btn.click(fn=create_project, inputs=[name_in, llm_in, embed_in], outputs=[admin_dropdown, chat_dropdown, create_status])
