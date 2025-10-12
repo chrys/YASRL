@@ -127,7 +127,7 @@ class RAGPipeline:
         document_count = await self.db_manager.get_document_count(
             project_id=project_id
         )
-        stats = {"indexed_documents": document_count}
+        stats: dict = {"indexed_documents": document_count}
         if project_id:
             stats["project_id"] = project_id
         return stats

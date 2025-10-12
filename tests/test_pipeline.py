@@ -30,6 +30,7 @@ class TestAppConfig(unittest.TestCase):
         except ConfigurationError:
             self.fail("AppConfig initialization failed unexpectedly.")
 
+    @patch.dict(os.environ, {}, clear=True)
     def test_missing_env_vars(self):
         """Test that ConfigurationError is raised when environment variables are missing."""
         with self.assertRaises(ConfigurationError):
