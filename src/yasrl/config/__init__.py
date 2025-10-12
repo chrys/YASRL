@@ -16,5 +16,8 @@ __all__ = [
     "AdvancedConfig", 
     "LLMModelConfig",
     "EmbeddingModelConfig",
-    "DatabaseConfig"
+    "DatabaseConfig",
+    "AppConfig",
 ]
+
+from .app_config import AppConfig
