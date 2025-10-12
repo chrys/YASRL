@@ -7,22 +7,7 @@
 
 **Target Audience:** Senior Software Architect / Lead Developer
 
-#### **1. Executive Summary**
-
-This document outlines the specifications for a Python library, named "YASRL," (Yet Another Simple RAG Library) designed to provide a streamlined, developer-first experience for building and deploying Retrieval-Augmented Generation (RAG) pipelines.
-
-The library's core value proposition is **simplicity through opinionated design**. It will act as a high-level orchestration layer (Facade) over the powerful LlamaIndex framework, abstracting away its boilerplate and complexity for the most common use cases. The end goal is to allow a developer to create a production-ready, conversational RAG system with minimal configuration and code.
-
-#### **2. Core Philosophy & Guiding Principles**
-
-The architect should ensure all design and implementation decisions adhere to these principles:
-
-*   **Developer Experience First:** The primary goal is to minimize developer friction. The API should be intuitive, simple, and require very little code to achieve powerful results.
-*   **Simplicity Over Configuration:** The library will favor convention over configuration. It will make intelligent, best-practice decisions on behalf of the user, eliminating the need for complex configuration objects.
-*   **Opinionated Defaults:** The library will come pre-configured with sensible defaults for models, chunking strategies, and other parameters. These defaults will be chosen to provide a high-quality result out-of-the-box.
-*   **Extensible for the Future:** While prioritizing simplicity now, the underlying architecture should be modular to allow for future expansion (e.g., adding new evaluators or providers).
-
-#### **3. High-Level Architecture**
+#### **1. High-Level Architecture**
 
 The library will be an **asynchronous-first facade** over the LlamaIndex framework. It will consist of a primary orchestrator class (`RAGPipeline`) that manages underlying LlamaIndex components.
 
@@ -44,9 +29,9 @@ The library will be an **asynchronous-first facade** over the LlamaIndex framewo
                                           [Retriever (w/ Re-ranker)] -> [LlamaIndex LLM] -> [QueryResult] -> [Developer]
 ```
 
-#### **4. Core Components & API Specification**
+#### **2. Core Components & API Specification**
 
-##### **4.1. `RAGPipeline` Orchestrator**
+##### **2.1. `RAGPipeline` Orchestrator**
 
 This is the main entry point for the user.
 
@@ -69,7 +54,7 @@ class RAGPipeline:
     *   `embed_model`: The embedding model provider. Supported strings: `"openai"`, `"gemini"`, `"opensource"`.
     *   The library is responsible for translating these strings into the appropriate, pre-configured LlamaIndex objects (e.g., `llm="openai"` might instantiate `llama_index.llms.openai.OpenAI(model="gpt-4o-mini")`).
 
-##### **4.2. Configuration Management**
+##### **2.2. Configuration Management**
 
 *   **Secrets & Keys:** All API keys and connection strings **must** be loaded from environment variables. The library **must not** accept keys as direct arguments.
     *   `OPENAI_API_KEY`: For OpenAI services.
@@ -78,7 +63,7 @@ class RAGPipeline:
     *   `OLLAMA_HOST`: (Optional) For connecting to a non-default Ollama instance.
 *   The library should raise a clear `ConfigurationError` if a required environment variable is missing for a selected service.
 
-##### **4.3. Data Ingestion & Indexing (`index` method)**
+##### **2.3. Data Ingestion & Indexing (`index` method)**
 
 *   **Signature:** `async def index(self, source: str | list[str])`
 *   **Intelligent Source Handling:** The method must automatically detect the type of `source` and use the appropriate LlamaIndex loader:

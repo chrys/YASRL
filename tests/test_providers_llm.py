@@ -35,7 +35,7 @@ class TestLLMProviderFactory(unittest.TestCase):
             config = ConfigurationManager()
             provider = LLMProviderFactory.create_provider("gemini", config)
             self.assertIsInstance(provider, GeminiLLMProvider)
-            self.assertEqual(provider.model_name, "models/gemini-2.0-flash-lite")  # Uses default from config
+            self.assertEqual(provider.model_name, "gemini-2.5-flash")  # Uses default from config
             with patch.object(GeminiLLMProvider, "get_llm", return_value="Gemini LLM"):
                 self.assertIn("Gemini LLM", provider.get_llm())
 

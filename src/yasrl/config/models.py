@@ -30,7 +30,7 @@ class LLMModelConfig:
         ... )
     """
     provider: str
-    model_name: str = "models/gemini-2.0-flash-lite"
+    model_name: str = "gemini-2.5-flash"
     temperature: float = 0.7
     max_tokens: int = 4096
     timeout: int = 30

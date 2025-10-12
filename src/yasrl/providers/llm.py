@@ -62,7 +62,7 @@ class GeminiLLMProvider(LLMProvider):
     """
     LLM provider for Gemini.
     """
-    DEFAULT_MODEL = "models/gemini-2.0-flash-lite"
+    DEFAULT_MODEL = "gemini-2.5-flash"
     
     def __init__(self, config: ConfigurationManager):
         self.config = config
