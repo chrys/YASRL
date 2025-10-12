@@ -3,6 +3,8 @@ import uuid
 import asyncio
 import inspect
 import logging
+import re
+import textwrap
 from typing import Dict, List, Optional, Any, Coroutine, cast, Tuple
 # Type alias for Gradio updates (gr.update(...) returns a dict)
 UIUpdate = Dict[str, Any]
@@ -31,6 +33,9 @@ projects: Dict[str, Dict] = {}
 _display_to_pid: Dict[str, str] = {}
 # set of (pid, message_index) tuples for which feedback has been given
 _feedback_given: set[tuple[str, int]] = set()
+
+QA_COLUMNS = ["question", "answer", "context"]
+_PLAIN_TEXT_RE = re.compile(r"<[^>]+>")
 
 UPLOADS_DIR = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
 
@@ -107,6 +112,59 @@ def _project_choices() -> List[str]:
     return choices
 
 
+def _refresh_project_data(pid: str) -> None:
+    if project_manager is None:
+        return
+    try:
+        record = project_manager.get_project(pid)
+    except Exception:
+        logger.exception("Failed to refresh project %s from database", pid)
+        return
+    if not record:
+        return
+    existing_pipeline = projects.get(pid, {}).get("pipeline")
+    projects[pid] = {
+        "name": record.get("name"),
+        "description": record.get("description"),
+        "llm": record.get("llm") or os.getenv("DEMO_LLM", "gemini"),
+        "embed_model": record.get("embed_model") or os.getenv("DEMO_EMBED_MODEL", "gemini"),
+        "sources": list(record.get("sources", [])),
+        "pipeline": existing_pipeline,
+    }
+
+
+def _project_sources(pid: str) -> List[str]:
+    proj = projects.get(pid)
+    if not proj:
+        return []
+    return list(proj.get("sources", []))
+
+
+def _format_sources_markdown(sources: List[str]) -> str:
+    if not sources:
+        return "No sources available for this project."
+    items = "\n".join(f"- {src}" for src in sources)
+    return "### Sources\n" + items
+
+
+def _source_pair_status(pid: str, source: str) -> Tuple[str, bool]:
+    if not source:
+        return "Select a source to continue.", False
+    if project_manager is None:
+        return "ProjectManager unavailable; cannot inspect QA pairs.", False
+    try:
+        pairs = project_manager.get_project_qa_pairs(pid, source=source)
+    except Exception:
+        logger.exception("Failed to inspect QA pairs for project %s source %s", pid, source)
+        return "Failed to inspect QA pairs for this source.", False
+    if pairs:
+        return (
+            f"Source **{source}** has {len(pairs)} saved QA pair(s). Use **Load saved QA pairs** to review them.",
+            True,
+        )
+    return (f"Source **{source}** has no saved QA pairs yet.", False)
+
+
 async def _init_pipeline_async_for_project(pid: str) -> RAGPipeline:
     proj = projects.get(pid)
     if proj is None:
@@ -150,10 +208,103 @@ def ensure_pipeline_for_project(pid: str) -> Optional[RAGPipeline]:
         return None
 
 
+import pandas as pd
+
+def _normalize_dataframe_rows(rows: Optional[Any]) -> List[Dict[str, str]]:
+    """Convert Gradio dataframe payloads into a normalized list of QA dicts."""
+    normalized: List[Dict[str, str]] = []
+    if rows is None:
+        return normalized
+    # Handle pandas DataFrame
+    if isinstance(rows, pd.DataFrame):
+        if rows.empty:
+            return normalized
+        rows = rows.values.tolist()
+    for row in rows:
+        if row is None:
+            continue
+        if isinstance(row, dict):
+            question = str(row.get("question", "")).strip()
+            answer = str(row.get("answer", "")).strip()
+            context = str(row.get("context", "")).strip()
+        elif isinstance(row, (list, tuple)):
+            question = str(row[0]).strip() if len(row) > 0 and row[0] is not None else ""
+            answer = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+            context = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
+        else:
+            continue
+        if question or answer or context:
+            normalized.append({"question": question, "answer": answer, "context": context})
+    return normalized
+
+def _rows_from_pairs(pairs: List[Dict[str, Any]]) -> List[List[str]]:
+    rows: List[List[str]] = []
+    for pair in pairs:
+        rows.append([
+            str(pair.get("question", "")),
+            str(pair.get("answer", "")),
+            str(pair.get("context", "")),
+        ])
+    return rows
+
+
+def _clean_excerpt(raw: str, max_words: int = 120) -> str:
+    if not raw:
+        return ""
+    cleaned = _PLAIN_TEXT_RE.sub(" ", raw)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return ""
+    words = cleaned.split()
+    if len(words) > max_words:
+        cleaned = " ".join(words[:max_words]) + " ..."
+    return cleaned
+
+
+def _gather_project_excerpts(pid: str, limit: int, source: Optional[str] = None) -> List[Tuple[str, str]]:
+    proj = projects.get(pid)
+    if not proj:
+        return []
+    excerpts: List[Tuple[str, str]] = []
+    sources_to_scan = [source] if source else proj.get("sources", [])
+    for src in sources_to_scan:
+        path = (src or "").strip()
+        if not path or not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as handle:
+                raw = handle.read()
+        except Exception:
+            logger.warning("Failed to read source '%s' for project %s", path, pid)
+            continue
+        # Split the file into chunks of ~120 words
+        words = raw.split()
+        chunk_size = 120
+        for i in range(0, min(len(words), limit * chunk_size), chunk_size):
+            chunk = " ".join(words[i:i+chunk_size])
+            if chunk.strip():
+                excerpts.append((path, chunk.strip()))
+            if len(excerpts) >= limit:
+                break
+        if len(excerpts) >= limit:
+            break
+    return excerpts
+
+def _build_pair_from_excerpt(source_path: str, excerpt: str) -> Dict[str, str]:
+    filename = os.path.basename(source_path) or "source"
+    question = f"What key detail is highlighted in the excerpt from {filename}?"
+    answer_words = excerpt.split()
+    if len(answer_words) > 60:
+        answer = " ".join(answer_words[:60]) + " ..."
+    else:
+        answer = excerpt
+    return {"question": question, "answer": answer, "context": excerpt}
+
+
 # ---------- Admin actions (used as callbacks) ----------
 
 
-def create_project(name: str, llm: str, embed_model: str) -> Tuple[UIUpdate, UIUpdate, str]:
+def create_project(name: str, llm: str, embed_model: str) -> Tuple[UIUpdate, UIUpdate, UIUpdate, str]:
     """
     Create project and return updates for admin_dropdown, chat_dropdown and a status string.
     Project name is taken from user input (not replaced by uuid).
@@ -165,7 +316,12 @@ def create_project(name: str, llm: str, embed_model: str) -> Tuple[UIUpdate, UIU
         status = "ProjectManager unavailable; cannot create project."
         logger.error(status)
         choices = _project_choices()
-        return gr.update(choices=choices), gr.update(choices=choices), status
+        return (
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            status,
+        )
 
     try:
         record = project_manager.create_project(
@@ -179,7 +335,12 @@ def create_project(name: str, llm: str, embed_model: str) -> Tuple[UIUpdate, UIU
         logger.exception("Failed to create project '%s'", name)
         status = f"Failed to create project '{name}': {exc}"
         choices = _project_choices()
-        return gr.update(choices=choices), gr.update(choices=choices), status
+        return (
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            status,
+        )
 
     pid = record["id"]
     projects[pid] = {
@@ -194,21 +355,43 @@ def create_project(name: str, llm: str, embed_model: str) -> Tuple[UIUpdate, UIU
     selected = f"{projects[pid]['name']} | {pid[:8]}"
     status = f"Created project '{name}' (llm={llm}, embed={embed_model})"
     logger.info(status)
-    return gr.update(choices=choices, value=selected), gr.update(choices=choices, value=selected), status
+    return (
+        gr.update(choices=choices, value=selected),
+        gr.update(choices=choices, value=selected),
+        gr.update(choices=choices, value=selected),
+        status,
+    )
 
 
-def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
+def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, UIUpdate, str]:
     pid = _display_to_pid.get(selected_display)
     if not pid:
-        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "No project selected to delete."
+        choices = _project_choices()
+        return (
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            "No project selected to delete.",
+        )
     proj = projects.get(pid)
     if not proj:
-        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "Project not found."
+        choices = _project_choices()
+        return (
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            "Project not found.",
+        )
     if project_manager is None:
         status = "ProjectManager unavailable; cannot delete project."
         logger.error(status)
         choices = _project_choices()
-        return gr.update(choices=choices), gr.update(choices=choices), status
+        return (
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            status,
+        )
     # try cleanup if available
     try:
         pipeline_obj = proj.get("pipeline")
@@ -230,13 +413,23 @@ def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
         logger.exception("Failed to delete project %s from database", pid)
         choices = _project_choices()
         status = f"Failed to delete project '{proj.get('name')}'."
-        return gr.update(choices=choices), gr.update(choices=choices), status
+        return (
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            gr.update(choices=choices),
+            status,
+        )
 
     del projects[pid]
     choices = _project_choices()
     status = f"Deleted project '{proj.get('name')}' ({pid[:8]})"
     logger.info(status)
-    return gr.update(choices=choices, value=None), gr.update(choices=choices, value=None), status
+    return (
+        gr.update(choices=choices, value=None),
+        gr.update(choices=choices, value=None),
+        gr.update(choices=choices, value=None),
+        status,
+    )
 
 
 def select_project(display: str) -> Tuple[str, str]:
@@ -355,6 +548,208 @@ def index_source_for_project(selected_display: str, source: str) -> str:
     except Exception:
         logger.exception("Index failed for %s project %s", source, pid)
         return f"Indexing failed for {source}"
+
+
+# ---------- Evaluation actions ----------
+
+
+def load_project_qa_pairs(selected_display: str, source_value: str) -> Tuple[UIUpdate, str, str, UIUpdate]:
+    pid = _display_to_pid.get(selected_display)
+    if not pid:
+        return gr.update(value=[], headers=QA_COLUMNS), "Select a project before loading QA pairs.", "No project selected.", gr.update(interactive=False)
+    if not source_value:
+        return gr.update(value=[], headers=QA_COLUMNS), "Select a source before loading QA pairs.", "Select a source to continue.", gr.update(interactive=False)
+    if project_manager is None:
+        logger.error("ProjectManager unavailable; cannot load QA pairs.")
+        return gr.update(value=[], headers=QA_COLUMNS), "ProjectManager unavailable.", "ProjectManager unavailable; cannot load QA pairs.", gr.update(interactive=False)
+    try:
+        pairs = project_manager.get_project_qa_pairs(pid, source=source_value)
+    except Exception:
+        logger.exception("Failed to load QA pairs for project %s source %s", pid, source_value)
+        return gr.update(value=[], headers=QA_COLUMNS), "Failed to load QA pairs from database.", "Failed to load QA pairs.", gr.update(interactive=False)
+    rows = _rows_from_pairs(pairs)
+    status = (
+        f"Loaded {len(rows)} QA pair(s) for source '{source_value}'."
+        if rows
+        else "No saved QA pairs found for this source."
+    )
+    source_message, has_pairs = _source_pair_status(pid, source_value)
+    return gr.update(value=rows, headers=QA_COLUMNS), status, source_message, gr.update(interactive=has_pairs)
+
+
+def save_project_qa_pairs(selected_display: str, source_value: str, dataframe_rows: Any) -> Tuple[str, str, UIUpdate]:
+    pid = _display_to_pid.get(selected_display)
+    if not pid:
+        return "Select a project before saving.", "Select a project before saving.", gr.update(interactive=False)
+    if not source_value:
+        return "Select a source before saving QA pairs.", "Select a source before saving QA pairs.", gr.update(interactive=False)
+    if project_manager is None:
+        logger.error("ProjectManager unavailable; cannot save QA pairs.")
+        return "ProjectManager unavailable.", "ProjectManager unavailable; cannot save QA pairs.", gr.update(interactive=False)
+    normalized = _normalize_dataframe_rows(dataframe_rows)
+    try:
+        saved = project_manager.replace_project_qa_pairs(pid, source_value, normalized)
+    except Exception:
+        logger.exception("Failed to save QA pairs for project %s source %s", pid, source_value)
+        return "Failed to save QA pairs to database.", "Failed to save QA pairs.", gr.update(interactive=False)
+    status = (
+        f"Saved {saved} QA pair(s) for source '{source_value}'."
+        if saved
+        else "No QA pairs saved (need question and answer)."
+    )
+    source_message, has_pairs = _source_pair_status(pid, source_value)
+    return status, source_message, gr.update(interactive=has_pairs)
+
+
+from evals.deepeval_evaluation import synthesize_evaluation_dataset
+from evals.deepeval_gemini import create_gemini_synthesizer
+
+def _extract_context_chunks(pid: str, source: str, pair_count: int) -> list[str]:
+    """Extract up to pair_count context chunks from the given source file."""
+    proj = projects.get(pid)
+    if not proj or not source or not os.path.isfile(source):
+        return []
+    
+    with open(source, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
+    
+    # Split into meaningful chunks (paragraphs or sentences)
+    paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
+    if not paragraphs:
+        # Fallback to sentence-based chunking
+        sentences = [s.strip() for s in content.split('.') if s.strip()]
+        # Group sentences into chunks of 3-5 sentences
+        chunk_size = 4
+        paragraphs = [
+            '. '.join(sentences[i:i+chunk_size]) + '.'
+            for i in range(0, len(sentences), chunk_size)
+            if sentences[i:i+chunk_size]
+        ]
+    
+    return paragraphs[:pair_count]
+
+def generate_dataset_for_project(
+    selected_display: str,
+    source_value: str,
+    pair_count: int,
+    current_rows: Any,
+) -> Tuple[UIUpdate, str]:
+    pid = _display_to_pid.get(selected_display)
+    if not pid:
+        return gr.update(value=[], headers=QA_COLUMNS), "Select a project before generating QA pairs."
+    if not source_value:
+        existing_rows = _rows_from_pairs(_normalize_dataframe_rows(current_rows))
+        return gr.update(value=existing_rows, headers=QA_COLUMNS), "Select a source before generating QA pairs."
+    
+    pair_count = max(1, min(int(pair_count or 1), 20))  # Limit to reasonable number
+    existing_pairs = _normalize_dataframe_rows(current_rows)
+    context_chunks = _extract_context_chunks(pid, source_value, pair_count)
+    
+    if not context_chunks:
+        return gr.update(value=_rows_from_pairs(existing_pairs), headers=QA_COLUMNS), "No readable content found for this source."
+    
+    try:
+        logger.info(f"Generating {pair_count} QA pairs using Gemini synthesizer")
+        
+        # Use the Gemini wrapper for synthesis
+        synthesizer = create_gemini_synthesizer()
+        qa_pairs = synthesizer.generate_qa_pairs(
+            contexts=context_chunks,
+            num_pairs_per_context=1,  # One QA pair per context chunk
+            question_types=["factual", "explanatory", "definitional"]
+        )
+        
+        logger.info(f"Successfully generated {len(qa_pairs)} QA pairs")
+        
+    except Exception as e:
+        logger.exception("Gemini QA generation failed: %s", e)
+        return gr.update(value=_rows_from_pairs(existing_pairs), headers=QA_COLUMNS), f"Failed to generate QA pairs: {e}"
+    
+    # Convert to format expected by the UI
+    new_rows = [
+        [pair.get("question", ""), pair.get("answer", ""), pair.get("context", "")]
+        for pair in qa_pairs 
+        if pair.get("question") and pair.get("answer")
+    ]
+    
+    # Combine with existing pairs
+    existing_rows = _rows_from_pairs(existing_pairs)
+    combined_rows = existing_rows + new_rows
+    
+    status = f"Generated {len(new_rows)} QA pairs for source '{source_value}'. Total: {len(combined_rows)} pairs."
+    return gr.update(value=combined_rows, headers=QA_COLUMNS), status
+
+def clear_qa_pairs() -> Tuple[UIUpdate, str]:
+    return gr.update(value=[], headers=QA_COLUMNS), "Cleared QA pairs table (unsaved changes lost)."
+
+
+def sync_evaluation_dropdown(display: str) -> UIUpdate:
+    choices = _project_choices()
+    value = display if display in choices else None
+    return gr.update(choices=choices, value=value)
+
+
+def on_select_evaluation_project(selected_display: str) -> Tuple[UIUpdate, str, UIUpdate, UIUpdate, str, str, UIUpdate]:
+    if not selected_display or selected_display not in _display_to_pid:
+        return (
+            gr.update(choices=[], value=None, interactive=False),
+            "No sources available for this project.",
+            gr.update(interactive=False),
+            gr.update(value=[], headers=QA_COLUMNS),
+            "",
+            "Select a project to view its sources.",
+            gr.update(value=""),
+        )
+    pid = _display_to_pid[selected_display]
+    _refresh_project_data(pid)
+    sources = _project_sources(pid)
+    sources_md = _format_sources_markdown(sources)
+    dropdown_update = gr.update(choices=sources, value=None, interactive=bool(sources))
+    return (
+        dropdown_update,
+        sources_md,
+        gr.update(interactive=False),
+        gr.update(value=[], headers=QA_COLUMNS),
+        "",
+        f"Project **{projects[pid]['name']}** selected. Choose a source or add a new one.",
+        gr.update(value=""),
+    )
+
+
+def on_select_evaluation_source(selected_display: str, source_value: str) -> Tuple[str, UIUpdate]:
+    pid = _display_to_pid.get(selected_display)
+    if not pid:
+        return "Select a project first.", gr.update(interactive=False)
+    if not source_value:
+        return "Select a source to continue.", gr.update(interactive=False)
+    message, has_pairs = _source_pair_status(pid, source_value)
+    return message, gr.update(interactive=has_pairs)
+
+
+def add_source_for_evaluation(selected_display: str, new_source: str) -> Tuple[str, UIUpdate, str, UIUpdate, UIUpdate]:
+    pid = _display_to_pid.get(selected_display)
+    new_source = (new_source or "").strip()
+    if not pid:
+        return "Select a project before adding a source.", gr.update(), "No project selected.", gr.update(interactive=False), gr.update(value=new_source)
+    if not new_source:
+        return "Enter a source (URL or path) before adding.", gr.update(), "No project selected.", gr.update(interactive=False), gr.update(value="")
+    if project_manager is None:
+        return "ProjectManager unavailable; cannot add source.", gr.update(), "ProjectManager unavailable.", gr.update(interactive=False), gr.update(value=new_source)
+
+    _refresh_project_data(pid)
+    sources = _project_sources(pid)
+    if new_source not in sources:
+        try:
+            record = project_manager.add_source(pid, new_source)
+            _refresh_project_data(pid)
+            sources = list(record.get("sources", []))
+        except Exception:
+            logger.exception("Failed to add source '%s' for project %s via evaluation tab", new_source, pid)
+            return "Failed to add source in database.", gr.update(), _format_sources_markdown(sources), gr.update(interactive=False), gr.update(value=new_source)
+    message, has_pairs = _source_pair_status(pid, new_source)
+    dropdown_update = gr.update(choices=sources, value=new_source, interactive=True)
+    sources_md = _format_sources_markdown(sources)
+    return message, dropdown_update, sources_md, gr.update(interactive=has_pairs), gr.update(value="")
 
 
 # ---------- Chat actions ----------
@@ -527,9 +922,102 @@ def build_ui(run_mode: str = "local"):
                 chatbot.like(handle_feedback, inputs=[chat_dropdown], outputs=None)
                 chat_dropdown.change(fn=clear_chat, inputs=None, outputs=[msg, chatbot])
 
+            # Evaluation tab
+            with gr.TabItem("Evaluation"):
+                gr.Markdown("# Evaluation")
+                evaluation_dropdown = gr.Dropdown(
+                    choices=_project_choices(),
+                    label="Select project",
+                    value=None,
+                    interactive=True,
+                )
+                sources_md = gr.Markdown("Select a project to view its sources.")
+                source_dropdown = gr.Dropdown(
+                    choices=[],
+                    label="Select source",
+                    value=None,
+                    interactive=False,
+                )
+                with gr.Row():
+                    new_source_box = gr.Textbox(label="Add source (URL or path)", placeholder="https://example.com/feed.xml")
+                    add_source_eval_btn = gr.Button("Add source", variant="secondary")
+                source_status = gr.Markdown("")
+                pair_count_slider = gr.Slider(
+                    minimum=1,
+                    maximum=20,
+                    value=5,
+                    step=1,
+                    label="Number of QA pairs to generate",
+                )
+                with gr.Row():
+                    load_pairs_btn = gr.Button("Load saved QA pairs", interactive=False)
+                    generate_pairs_btn = gr.Button("Generate QA pairs", variant="primary")
+                    clear_pairs_btn = gr.Button("Clear table", variant="secondary")
+                qa_dataframe = gr.Dataframe(
+                    headers=QA_COLUMNS,
+                    datatype=["str", "str", "str"],
+                    row_count=(0, "dynamic"),
+                    col_count=(len(QA_COLUMNS), "fixed"),
+                    interactive=True,
+                    label="QA pairs",
+                )
+                save_pairs_btn = gr.Button("Save QA pairs", variant="primary")
+                eval_status = gr.Markdown("")
+
+                load_pairs_btn.click(
+                    fn=load_project_qa_pairs,
+                    inputs=[evaluation_dropdown, source_dropdown],
+                    outputs=[qa_dataframe, eval_status, source_status, load_pairs_btn],
+                )
+                generate_pairs_btn.click(
+                    fn=generate_dataset_for_project,
+                    inputs=[evaluation_dropdown, source_dropdown, pair_count_slider, qa_dataframe],
+                    outputs=[qa_dataframe, eval_status],
+                )
+                clear_pairs_btn.click(
+                    fn=clear_qa_pairs,
+                    inputs=None,
+                    outputs=[qa_dataframe, eval_status],
+                )
+                save_pairs_btn.click(
+                    fn=save_project_qa_pairs,
+                    inputs=[evaluation_dropdown, source_dropdown, qa_dataframe],
+                    outputs=[eval_status, source_status, load_pairs_btn],
+                )
+
+                evaluation_dropdown.change(
+                    fn=on_select_evaluation_project,
+                    inputs=[evaluation_dropdown],
+                    outputs=[source_dropdown, sources_md, load_pairs_btn, qa_dataframe, eval_status, source_status, new_source_box],
+                )
+                source_dropdown.change(
+                    fn=on_select_evaluation_source,
+                    inputs=[evaluation_dropdown, source_dropdown],
+                    outputs=[source_status, load_pairs_btn],
+                )
+                add_source_eval_btn.click(
+                    fn=add_source_for_evaluation,
+                    inputs=[evaluation_dropdown, new_source_box],
+                    outputs=[source_status, source_dropdown, sources_md, load_pairs_btn, new_source_box],
+                )
+
+        admin_dropdown.change(
+            fn=sync_evaluation_dropdown,
+            inputs=[admin_dropdown],
+            outputs=[evaluation_dropdown],
+        )
+
         # Bind create/delete now that both dropdowns exist
-        create_btn.click(fn=create_project, inputs=[name_in, llm_in, embed_in], outputs=[admin_dropdown, chat_dropdown, create_status])
-        delete_btn.click(fn=delete_project, inputs=[admin_dropdown], outputs=[admin_dropdown, chat_dropdown, delete_status])
+        create_btn.click(
+            fn=create_project,
+            inputs=[name_in, llm_in, embed_in],
+            outputs=[admin_dropdown, chat_dropdown, evaluation_dropdown, create_status],
+        )
+        delete_btn.click(
+            fn=delete_project,
+            inputs=[admin_dropdown],
+            outputs=[admin_dropdown, chat_dropdown, evaluation_dropdown, delete_status],
+        )
 
     demo.launch(server_name=host, server_port=port, share=False, inbrowser=inbrowser)
 

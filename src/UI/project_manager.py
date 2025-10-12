@@ -61,6 +61,21 @@ class ProjectManager:
                 cur.execute(
                     "ALTER TABLE projects ADD COLUMN IF NOT EXISTS sources JSONB DEFAULT '[]'::jsonb;"
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS project_qa_pairs (
+                        id BIGSERIAL PRIMARY KEY,
+                        project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                        question TEXT NOT NULL,
+                        answer TEXT NOT NULL,
+                        context TEXT,
+                        source TEXT NOT NULL,
+                        metadata JSONB DEFAULT '{}'::jsonb,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    """
+                )
                 conn.commit()
         except Exception:  # pragma: no cover - logging path
             conn.rollback()
@@ -254,6 +269,89 @@ class ProjectManager:
             sources.append(source)
             project = self.update_project(project_id, sources=sources)
         return project  # type: ignore[return-value]
+
+    def get_project_qa_pairs(self, project_id: Any, source: Optional[str] = None) -> List[Dict[str, Any]]:
+        project_id_int = self._coerce_project_id(project_id)
+        conn = self._get_connection()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if source:
+                    cur.execute(
+                        """
+                        SELECT id, question, answer, context, source, metadata, created_at, updated_at
+                        FROM project_qa_pairs
+                        WHERE project_id = %s AND source = %s
+                        ORDER BY id;
+                        """,
+                        (project_id_int, source),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT id, question, answer, context, source, metadata, created_at, updated_at
+                        FROM project_qa_pairs
+                        WHERE project_id = %s
+                        ORDER BY id;
+                        """,
+                        (project_id_int,),
+                    )
+                rows = cur.fetchall()
+                result: List[Dict[str, Any]] = []
+                for row in rows:
+                    payload = dict(row)
+                    payload["id"] = str(payload["id"])
+                    result.append(payload)
+                return result
+        finally:
+            self._release_connection(conn)
+
+    def replace_project_qa_pairs(self, project_id: Any, source: str, qa_pairs: List[Dict[str, Any]]) -> int:
+        if not source:
+            raise ValueError("Source is required when saving QA pairs.")
+        project_id_int = self._coerce_project_id(project_id)
+        conn = self._get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM project_qa_pairs WHERE project_id = %s AND source = %s;",
+                    (project_id_int, source),
+                )
+                inserted = 0
+                if qa_pairs:
+                    insert_values = [
+                        (
+                            project_id_int,
+                            (pair.get("question") or "").strip(),
+                            (pair.get("answer") or "").strip(),
+                            (pair.get("context") or "").strip() or None,
+                            source,
+                            Json(pair.get("metadata") or {}),
+                        )
+                        for pair in qa_pairs
+                        if (pair.get("question") or "").strip()
+                        and (pair.get("answer") or "").strip()
+                    ]
+                    if insert_values:
+                        args_str = ",".join(["(%s, %s, %s, %s, %s, %s, NOW())"] * len(insert_values))
+                        flat_values: List[Any] = []
+                        for values in insert_values:
+                            flat_values.extend(values)
+                        cur.execute(
+                            f"""
+                            INSERT INTO project_qa_pairs (project_id, question, answer, context, source, metadata, updated_at)
+                            VALUES {args_str}
+                            """,
+                            tuple(flat_values),
+                        )
+                        inserted = len(insert_values)
+                conn.commit()
+                return inserted
+        except Exception:
+            conn.rollback()
+            logger.exception("Failed to replace QA pairs for project %s source %s", project_id_int, source)
+            raise
+        finally:
+            self._release_connection(conn)
 
     def delete_project(self, project_id: Any) -> None:
         project_id_int = self._coerce_project_id(project_id)
