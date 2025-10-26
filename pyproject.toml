@@ -32,6 +32,7 @@ dependencies = [
     "ragas",
     "langchain-google-genai", 
     "sacrebleu",
+    "markitdown[all]",
 ]
 
 [project.optional-dependencies]
