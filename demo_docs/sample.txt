@@ -1,0 +1,17 @@
+
+        Welcome to YASRL - Yet Another Search and Retrieval Library.
+        
+        YASRL is a powerful RAG (Retrieval-Augmented Generation) system that combines 
+        vector search with large language models to provide accurate, source-backed answers.
+        
+        Key Features:
+        - Multi-modal document processing
+        - Advanced chunking strategies
+        - Hybrid search capabilities
+        - Comprehensive evaluation tools
+        
+        The system supports various embedding models including OpenAI, Gemini, and local models.
+        It can process PDFs, web pages, and text documents efficiently.
+        
+        For evaluation, YASRL provides both automated metrics and human feedback collection.
+        

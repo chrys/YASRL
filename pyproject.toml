@@ -29,6 +29,9 @@ dependencies = [
     "sentence-transformers", 
     "deepeval", 
     "google-generativeai",
+    "ragas",
+    "langchain-google-genai", 
+    "sacrebleu",
 ]
 
 [project.optional-dependencies]

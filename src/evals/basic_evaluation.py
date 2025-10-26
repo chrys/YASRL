@@ -18,6 +18,12 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from yasrl.pipeline import RAGPipeline
 from yasrl.models import QueryResult
+from yasrl.text_processor import TextProcessor
+
+# LlamaIndex imports for dataset generation
+from llama_index.core import SimpleDirectoryReader
+from llama_index.llms.gemini import Gemini
+from llama_index.core.evaluation import DatasetGenerator
 
 class BasicEvaluator:
     """
@@ -86,6 +92,89 @@ class BasicEvaluator:
         evaluation["metrics"]["eyeball_sources"] = eyeball_sources 
 
         return evaluation
+    
+    def create_evaluation_dataset(self, document_path: str, num_questions: int = 10) -> List[Dict[str, str]]:
+        """
+        Create evaluation dataset using RagDatasetGenerator
+        
+        Args:
+            document_path: Path to the input document or directory
+            num_questions: Number of questions to generate
+            
+        Returns:
+            List of dictionaries with 'question' and 'reference_answer' keys
+        """
+        print(f"📄 Creating evaluation dataset from: {document_path}")
+        print(f"🎯 Target questions: {num_questions}")
+        
+        try:
+            # Step 1: Use Gemini as LLM
+            llm = Gemini(
+                model="gemini-2.5-flash",
+                api_key=os.getenv("GOOGLE_API_KEY")
+            )
+            print("✅ Gemini LLM initialized")
+            
+            # Step 2: Load the data using SimpleDirectoryReader
+            if os.path.isdir(document_path):
+                documents = SimpleDirectoryReader(document_path).load_data()
+            else:
+                documents = SimpleDirectoryReader(input_files=[document_path]).load_data()
+            
+            print(f"✅ Loaded {len(documents)} document(s)")
+            
+            # Step 3: Create a node parser to split the document into chunks
+            text_processor = TextProcessor(
+                chunk_size=1024,  # Reasonable chunk size for question generation
+                chunk_overlap=200
+            )
+            
+            # Process documents into nodes
+            nodes = text_processor.process_documents(documents)
+            print(f"✅ Created {len(nodes)} text chunks")
+            
+            # Step 4: Use RagDatasetGenerator to generate questions for each node
+            dataset_generator = DatasetGenerator(
+                nodes=nodes,
+                llm=llm,
+                num_questions_per_chunk=max(1, num_questions // len(nodes)),  # Distribute questions across chunks
+                text_question_template=None,  # Use default template
+                text_qa_template=None  # Use default template
+            )
+            
+            print("🔄 Generating questions...")
+            eval_questions = dataset_generator.generate_questions_from_nodes()
+            
+            # Convert to our expected format
+            dataset = []
+            for i, question in enumerate(eval_questions[:num_questions]):  # Limit to requested number
+                dataset.append({
+                    "question": question,
+                    "reference_answer": f"Generated question {i+1} from document chunks"
+                })
+            
+            print(f"✅ Generated {len(dataset)} evaluation questions")
+            
+            # Save the generated dataset
+            output_dir = Path("./results")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            dataset_file = output_dir / f"generated_dataset_{len(dataset)}_questions.json"
+            
+            with open(dataset_file, "w") as f:
+                json.dump({
+                    "source_document": document_path,
+                    "num_questions": len(dataset),
+                    "generation_method": "RagDatasetGenerator with Gemini",
+                    "questions": dataset
+                }, f, indent=2)
+            
+            print(f"💾 Dataset saved to: {dataset_file}")
+            
+            return dataset
+            
+        except Exception as e:
+            print(f"❌ Error creating evaluation dataset: {e}")
+            raise
 
 async def run_basic_evaluation():
     """
@@ -237,10 +326,110 @@ async def run_basic_evaluation():
         print(f"❌ Error during evaluation: {e}")
         raise
 
+async def demo_dataset_generation():
+    """
+    Demo function showing dataset generation capabilities
+    """
+    print("\n" + "=" * 60)
+    print("🎯 DATASET GENERATION DEMO")
+    print("=" * 60)
+    
+    # Initialize evaluator
+    evaluator = BasicEvaluator()
+    
+    # Ask user for document path
+    print("\n📁 Document Input Options:")
+    print("1. Use a specific file path")
+    print("2. Use a directory path")
+    print("3. Skip demo")
+    
+    choice = input("Choose an option [1-3]: ").strip()
+    
+    if choice == "3":
+        print("⏭️ Skipping dataset generation demo")
+        return
+    
+    if choice == "1":
+        doc_path = input("Enter file path: ").strip()
+    elif choice == "2":
+        doc_path = input("Enter directory path: ").strip()
+    else:
+        print("ℹ️ Using default demo document")
+        # Create a demo document for testing
+        demo_dir = Path("./demo_docs")
+        demo_dir.mkdir(exist_ok=True)
+        demo_file = demo_dir / "sample.txt"
+        
+        demo_content = """
+        Welcome to YASRL - Yet Another Search and Retrieval Library.
+        
+        YASRL is a powerful RAG (Retrieval-Augmented Generation) system that combines 
+        vector search with large language models to provide accurate, source-backed answers.
+        
+        Key Features:
+        - Multi-modal document processing
+        - Advanced chunking strategies
+        - Hybrid search capabilities
+        - Comprehensive evaluation tools
+        
+        The system supports various embedding models including OpenAI, Gemini, and local models.
+        It can process PDFs, web pages, and text documents efficiently.
+        
+        For evaluation, YASRL provides both automated metrics and human feedback collection.
+        """
+        
+        with open(demo_file, "w") as f:
+            f.write(demo_content)
+        
+        doc_path = str(demo_file)
+        print(f"📝 Created demo document at: {doc_path}")
+    
+    if not os.path.exists(doc_path):
+        print(f"❌ Path does not exist: {doc_path}")
+        return
+    
+    # Generate dataset
+    try:
+        num_questions = int(input("Number of questions to generate [5]: ").strip() or "5")
+        
+        print(f"\n🚀 Generating evaluation dataset...")
+        dataset = evaluator.create_evaluation_dataset(doc_path, num_questions)
+        
+        # Show sample questions
+        print(f"\n📋 Sample Generated Questions:")
+        for i, item in enumerate(dataset[:3], 1):  # Show first 3
+            print(f"{i}. {item['question']}")
+        
+        if len(dataset) > 3:
+            print(f"... and {len(dataset) - 3} more questions")
+        
+        print(f"\n✅ Dataset generation complete!")
+        
+    except Exception as e:
+        print(f"❌ Error in dataset generation demo: {e}")
+
 if __name__ == "__main__":
     # Load environment variables
     from dotenv import load_dotenv
     load_dotenv()
     
-    # Run the evaluation
-    asyncio.run(run_basic_evaluation())
+    async def main():
+        """Main function with demo options"""
+        print("🚀 YASRL Evaluation Demo")
+        print("=" * 50)
+        print("1. Run basic evaluation with existing questions")
+        print("2. Demo dataset generation")
+        print("3. Run both")
+        
+        choice = input("Choose an option [1-3]: ").strip()
+        
+        if choice in ["1", "3"]:
+            await run_basic_evaluation()
+        
+        if choice in ["2", "3"]:
+            await demo_dataset_generation()
+        
+        print("\n🎉 Demo complete!")
+    
+    # Run the main demo
+    asyncio.run(main())

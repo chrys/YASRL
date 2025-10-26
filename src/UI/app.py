@@ -1,3 +1,5 @@
+from evaluate_tab import create_evaluate_tab
+
 import os
 import uuid
 import json
@@ -13,78 +15,247 @@ from dotenv import load_dotenv
 from pathlib import Path
 import shutil
 
-
 load_dotenv()
 
 from yasrl.pipeline import RAGPipeline  # used for indexing / pipeline init
 from yasrl.vector_store import VectorStoreManager
 from yasrl.feedback import FeedbackManager
-
-
+from yasrl.database import (
+    get_db_connection, 
+    get_projects, 
+    get_project_by_name, 
+    save_projects,
+    setup_projects_table,
+    setup_project_qa_pairs_table,
+    delete_project_by_name, 
+    save_single_project,
+)
 
 
 logger = logging.getLogger("yasrl.app")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
-# In-memory projects: key = pid (uuid hex), value = dict(name, llm, embed_model, pipeline, sources)
+# In-memory projects cache: key = pid (database id), value = dict(name, llm, embed_model, pipeline, sources)
 projects: Dict[str, Dict] = {}
-# mapping used by UI: display string -> pid
+# mapping used by UI: display string -> pid (database id)
 _display_to_pid: Dict[str, str] = {}
 # set of (pid, message_index) tuples for which feedback has been given
 _feedback_given: set[tuple[str, int]] = set()
 
-PROJECTS_FILE = os.getenv("PROJECTS_FILE", os.path.join(os.getcwd(), "projects.json"))
 UPLOADS_DIR = os.getenv("UPLOADS_DIR", os.path.join(os.getcwd(), "uploads"))
 
+# Database connection helper
+def get_database_connection():
+    """Get database connection with error handling."""
+    postgres_uri = os.getenv("POSTGRES_URI")
+    if not postgres_uri:
+        logger.error("POSTGRES_URI environment variable is not set")
+        return None
+    try:
+        return get_db_connection(postgres_uri)
+    except Exception as e:
+        logger.error(f"Failed to connect to database: {e}")
+        return None
+
+def create_project(name: str, llm: str, embed_model: str, description: str = "") -> Tuple[UIUpdate, UIUpdate, str]:
+    """
+    Create project in database and return updates for admin_dropdown, chat_dropdown and a status string.
+    """
+    name = (name or "").strip() or f"project-{uuid.uuid4().hex[:6]}"
+    llm = (llm or os.getenv("DEMO_LLM", "gemini")).strip()
+    embed_model = (embed_model or os.getenv("DEMO_EMBED_MODEL", "gemini")).strip()
+    description = (description or "").strip()
+    
+    # Save to database using database.py functions
+    conn = get_database_connection()
+    if not conn:
+        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "Error: Cannot connect to database"
+    
+    try:
+        # Use save_single_project instead of save_projects for better control
+        project_data = {
+            "name": name,
+            "description": description,
+            "sources": [],  # Start with empty sources list
+            "embed_model": embed_model,
+            "llm": llm
+        }
+        
+        # Save the project and get success status
+        success = save_single_project(conn, project_data)
+        if not success:
+            return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), f"Failed to create project '{name}'"
+        
+        # Get the created project from database to get the ID
+        created_project_df = get_project_by_name(conn, name)
+        
+        if not created_project_df.empty:
+            # Add the new project to our in-memory cache
+            row = created_project_df.iloc[0]
+            pid = str(row['id'])
+            
+            # Handle sources field properly
+            sources = []
+            if row['sources'] is not None:
+                if isinstance(row['sources'], str):
+                    try:
+                        sources = json.loads(row['sources'])
+                    except (json.JSONDecodeError, TypeError):
+                        sources = []
+                elif isinstance(row['sources'], list):
+                    sources = row['sources']
+            
+            projects[pid] = {
+                "name": row['name'],
+                "llm": row['llm'],
+                "embed_model": row['embed_model'],
+                "sources": sources,
+                "pipeline": None,
+                "description": row.get('description', ''),
+            }
+            
+            choices = _project_choices()
+            selected = f"{name} | ID: {pid}"
+            status = f"Created project '{name}' (llm={llm}, embed={embed_model})"
+            logger.info(f"Successfully created project '{name}' with ID {pid}")
+            return gr.update(choices=choices, value=selected), gr.update(choices=choices, value=selected), status
+        else:
+            logger.error(f"Project '{name}' was saved but not found when querying database")
+            return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), f"Error: Project '{name}' saved but not found in database"
+            
+    except Exception as e:
+        logger.exception(f"Failed to create project '{name}'")
+        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), f"Error creating project: {e}"
+    finally:
+        conn.close()
 
 def load_projects() -> None:
+    """Load projects from database into memory cache."""
     global projects
-    try:
-        if os.path.exists(PROJECTS_FILE):
-            with open(PROJECTS_FILE, "r", encoding="utf-8") as fh:
-                data = json.load(fh)
-            projects = {
-                pid: {
-                    "name": v.get("name"),
-                    "llm": v.get("llm"),
-                    "embed_model": v.get("embed_model"),
-                    "sources": v.get("sources", []),
-                    "pipeline": None,
-                }
-                for pid, v in data.items()
-            }
-            logger.info("Loaded %d projects from %s", len(projects), PROJECTS_FILE)
-        else:
-            projects = {}
-            logger.info("No projects file found at %s, starting with empty projects", PROJECTS_FILE)
-    except Exception:
-        logger.exception("Failed to load projects; starting with empty projects")
+    conn = get_database_connection()
+    if not conn:
+        logger.error("Cannot load projects: no database connection")
         projects = {}
-
-
-def save_projects() -> None:
+        return
+    
     try:
-        dirpath = os.path.dirname(PROJECTS_FILE) or "."
-        os.makedirs(dirpath, exist_ok=True)
-        tmp = PROJECTS_FILE + ".tmp"
-        data = {
-            pid: {
-                "name": v["name"],
-                "llm": v["llm"],
-                "embed_model": v["embed_model"],
-                "sources": v.get("sources", []),
+        # Setup tables if they don't exist (this is now safe)
+        setup_projects_table(conn)
+        setup_project_qa_pairs_table(conn)
+        
+        projects_df = get_projects(conn)
+        projects.clear()
+        
+        logger.info(f"Loading {len(projects_df)} projects from database")
+        
+        for _, row in projects_df.iterrows():
+            pid = str(row['id'])
+            
+            # Handle sources field more robustly
+            sources = []
+            if row['sources'] is not None:
+                if isinstance(row['sources'], (list, dict)):
+                    sources = row['sources'] if isinstance(row['sources'], list) else []
+                elif isinstance(row['sources'], str):
+                    try:
+                        parsed = json.loads(row['sources'])
+                        sources = parsed if isinstance(parsed, list) else []
+                    except (json.JSONDecodeError, TypeError):
+                        logger.warning(f"Failed to parse sources for project {pid}: {row['sources']}")
+                        sources = []
+            
+            projects[pid] = {
+                "name": row['name'],
+                "llm": row['llm'] or 'gemini',
+                "embed_model": row['embed_model'] or 'gemini',
+                "sources": sources,
+                "pipeline": None,
+                "description": row.get('description', ''),
             }
-            for pid, v in projects.items()
+        
+        logger.info(f"Successfully loaded {len(projects)} projects from database")
+        
+    except Exception as e:
+        logger.exception("Failed to load projects from database")
+        projects = {}
+    finally:
+        conn.close()
+
+def save_single_project_to_db(pid: str) -> bool:
+    """Save a single project from memory cache to database."""
+    conn = get_database_connection()
+    if not conn:
+        logger.error("Cannot save project: no database connection")
+        return False
+    
+    try:
+        proj = projects.get(pid)
+        if not proj:
+            logger.error(f"Project {pid} not found in memory cache")
+            return False
+            
+        project_data = {
+            "name": proj["name"],
+            "description": proj.get("description", ""),
+            "sources": proj.get("sources", []),
+            "embed_model": proj["embed_model"],
+            "llm": proj["llm"]
         }
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2, ensure_ascii=False)
-        os.replace(tmp, PROJECTS_FILE)
-        logger.info("Saved %d projects to %s", len(projects), PROJECTS_FILE)
+        
+        success = save_single_project(conn, project_data)
+        if success:
+            logger.info(f"Saved project {pid} to database")
+        return success
+        
+    except Exception as e:
+        logger.exception(f"Failed to save project {pid} to database")
+        return False
+    finally:
+        conn.close()
+
+# Remove the old save_projects_to_db function and update add_source function:
+def add_source(selected_display: str, source: str) -> Tuple[str, str, str]:
+    """
+    Add a source (URL/path) to the selected project and persist.
+    Returns (status, info_md, sources_md).
+    """
+    pid = _display_to_pid.get(selected_display)
+    if not pid:
+        return "No project selected.", "No project selected.", "No sources."
+    source = (source or "").strip()
+    if not source:
+        return "No source provided.", *select_project(selected_display)
+    proj = projects.get(pid)
+    if proj is None:
+        return "Project not found.", *select_project(selected_display)
+    proj.setdefault("sources", [])
+    if source in proj["sources"]:
+        return "Source already added.", *select_project(selected_display)
+    proj["sources"].append(source)
+    
+    # Update in database using the new single project save function
+    if not save_single_project_to_db(pid):
+        return "Failed to save source to database.", *select_project(selected_display)
+    
+    # attempt to index immediately if pipeline available
+    pipeline = ensure_pipeline_for_project(pid)
+    if pipeline is None:
+        status = f"Source added to project '{proj['name']}', pipeline not initialized yet."
+        info_md, sources_md = select_project(selected_display)
+        return status, info_md, sources_md
+    try:
+        res = pipeline.index(source=source, project_id=pid)
+        if inspect.isawaitable(res):
+            asyncio.run(cast(Coroutine[Any, Any, Any], res))
+        status = f"Source added and indexing started for {source}"
+        info_md, sources_md = select_project(selected_display)
+        return status, info_md, sources_md
     except Exception:
-        logger.exception("Failed to save projects to %s", PROJECTS_FILE)
-
-
-# Load on import/run
+        logger.exception("Indexing failed for %s in project %s", source, pid)
+        status = f"Source added but indexing failed for {source}"
+        info_md, sources_md = select_project(selected_display)
+        return status, info_md, sources_md
+# Load projects on import/run
 load_projects()
 
 # Initialize FeedbackManager and setup feedback table
@@ -93,20 +264,17 @@ try:
     feedback_manager.setup_feedback_table()
 except Exception as e:
     logger.error("Failed to initialize FeedbackManager or setup table: %s", e)
-    # Depending on requirements, you might want to exit or handle this differently
     feedback_manager = None
-
 
 def _project_choices() -> List[str]:
     """Return list of display labels and populate internal mapping."""
     choices: List[str] = []
     _display_to_pid.clear()
     for pid, info in projects.items():
-        display = f"{info['name']} | {pid[:8]}"
+        display = f"{info['name']} | ID: {pid}"
         choices.append(display)
         _display_to_pid[display] = pid
     return choices
-
 
 async def _init_pipeline_async_for_project(pid: str) -> RAGPipeline:
     proj = projects.get(pid)
@@ -142,7 +310,6 @@ async def _init_pipeline_async_for_project(pid: str) -> RAGPipeline:
     proj["pipeline"] = pipeline
     return pipeline
 
-
 def ensure_pipeline_for_project(pid: str) -> Optional[RAGPipeline]:
     try:
         return asyncio.run(_init_pipeline_async_for_project(pid))
@@ -150,29 +317,87 @@ def ensure_pipeline_for_project(pid: str) -> Optional[RAGPipeline]:
         logger.exception("Pipeline init failed for %s", pid)
         return None
 
-
 # ---------- Admin actions (used as callbacks) ----------
 
-
-def create_project(name: str, llm: str, embed_model: str) -> Tuple[UIUpdate, UIUpdate, str]:
+    
     """
-    Create project and return updates for admin_dropdown, chat_dropdown and a status string.
-    Project name is taken from user input (not replaced by uuid).
+    Create project in database and return updates for admin_dropdown, chat_dropdown and a status string.
     """
     name = (name or "").strip() or f"project-{uuid.uuid4().hex[:6]}"
     llm = (llm or os.getenv("DEMO_LLM", "gemini")).strip()
     embed_model = (embed_model or os.getenv("DEMO_EMBED_MODEL", "gemini")).strip()
-    pid = uuid.uuid4().hex
-    projects[pid] = {"name": name, "llm": llm, "embed_model": embed_model, "sources": [], "pipeline": None}
-    save_projects()
-    choices = _project_choices()
-    selected = f"{projects[pid]['name']} | {pid[:8]}"
-    status = f"Created project '{name}' (llm={llm}, embed={embed_model})"
-    logger.info(status)
-    # update both dropdowns (admin and chat)
-    return gr.update(choices=choices, value=selected), gr.update(choices=choices, value=selected), status
-
-
+    description = (description or "").strip()
+    
+    # Save to database using database.py functions
+    conn = get_database_connection()
+    if not conn:
+        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "Error: Cannot connect to database"
+    
+    try:
+        import pandas as pd
+        project_data = pd.DataFrame([{
+            "name": name,
+            "description": description,
+            "sources": [],
+            "embed_model": embed_model,
+            "llm": llm
+        }])
+        save_projects(conn, project_data)
+        
+        # Instead of reloading all projects, get the specific project we just created
+        created_project_df = get_project_by_name(conn, name)
+        
+        if not created_project_df.empty:
+            # Add the new project to our in-memory cache
+            row = created_project_df.iloc[0]
+            pid = str(row['id'])
+            sources = row['sources'] if row['sources'] else []
+            if isinstance(sources, str):
+                try:
+                    sources = json.loads(sources)
+                except:
+                    sources = []
+            
+            projects[pid] = {
+                "name": row['name'],
+                "llm": row['llm'],
+                "embed_model": row['embed_model'],
+                "sources": sources,
+                "pipeline": None,
+                "description": row.get('description', ''),
+            }
+            
+            choices = _project_choices()
+            selected = f"{name} | ID: {pid}"
+            status = f"Created project '{name}' (llm={llm}, embed={embed_model})"
+            logger.info(status)
+            return gr.update(choices=choices, value=selected), gr.update(choices=choices, value=selected), status
+        else:
+            # Fallback: reload all projects and try to find it
+            load_projects()
+            
+            # Try to find the created project again
+            created_pid = None
+            for pid, proj in projects.items():
+                if proj["name"] == name:
+                    created_pid = pid
+                    break
+            
+            if created_pid:
+                choices = _project_choices()
+                selected = f"{name} | ID: {created_pid}"
+                status = f"Created project '{name}' (llm={llm}, embed={embed_model})"
+                logger.info(status)
+                return gr.update(choices=choices, value=selected), gr.update(choices=choices, value=selected), status
+            else:
+                logger.error(f"Project '{name}' was created but cannot be found in database")
+                return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), f"Error: Project '{name}' created but not found in reload"
+            
+    except Exception as e:
+        logger.exception(f"Failed to create project '{name}'")
+        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), f"Error creating project: {e}"
+    finally:
+        conn.close()
 def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
     pid = _display_to_pid.get(selected_display)
     if not pid:
@@ -180,6 +405,9 @@ def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
     proj = projects.get(pid)
     if not proj:
         return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "Project not found."
+    
+    project_name = proj.get("name")
+    
     # try cleanup if available
     try:
         pipeline_obj = proj.get("pipeline")
@@ -195,13 +423,26 @@ def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
     except Exception:
         logger.exception("Unexpected cleanup error for %s", pid)
 
-    del projects[pid]
-    save_projects()
-    choices = _project_choices()
-    status = f"Deleted project '{proj.get('name')}' ({pid[:8]})"
-    logger.info(status)
-    return gr.update(choices=choices, value=None), gr.update(choices=choices, value=None), status
-
+    # Delete from database using database.py functions
+    conn = get_database_connection()
+    if not conn:
+        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "Error: Cannot connect to database"
+    
+    try:
+        if delete_project_by_name(conn, project_name):
+            # Remove from memory cache
+            del projects[pid]
+            choices = _project_choices()
+            status = f"Deleted project '{project_name}' (ID: {pid})"
+            logger.info(status)
+            return gr.update(choices=choices, value=None), gr.update(choices=choices, value=None), status
+        else:
+            return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), f"Error: Failed to delete project '{project_name}' from database"
+    except Exception as e:
+        logger.exception(f"Failed to delete project '{project_name}'")
+        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), f"Error deleting project: {e}"
+    finally:
+        conn.close()
 
 def select_project(display: str) -> Tuple[str, str]:
     """
@@ -212,11 +453,14 @@ def select_project(display: str) -> Tuple[str, str]:
         return "No project selected.", "No sources."
     info = projects.get(pid, {})
     sources = info.get("sources", [])
+    description = info.get("description", "")
+    
     info_md = (
         f"**Project:** {info.get('name')}\n\n"
-        f"- id: `{pid}`\n"
-        f"- llm: `{info.get('llm')}`\n"
-        f"- embed_model: `{info.get('embed_model')}`\n\n"
+        f"- ID: `{pid}`\n"
+        f"- LLM: `{info.get('llm')}`\n"
+        f"- Embed Model: `{info.get('embed_model')}`\n"
+        f"- Description: {description}\n\n"
         "You can now index sources or add new sources below."
     )
     if sources:
@@ -224,46 +468,6 @@ def select_project(display: str) -> Tuple[str, str]:
     else:
         sources_md = "No sources added yet."
     return info_md, sources_md
-
-
-def add_source(selected_display: str, source: str) -> Tuple[str, str, str]:
-    """
-    Add a source (URL/path) to the selected project and persist.
-    Returns (status, info_md, sources_md).
-    """
-    pid = _display_to_pid.get(selected_display)
-    if not pid:
-        return "No project selected.", "No project selected.", "No sources."
-    source = (source or "").strip()
-    if not source:
-        return "No source provided.", *select_project(selected_display)
-    proj = projects.get(pid)
-    if proj is None:
-        return "Project not found.", *select_project(selected_display)
-    proj.setdefault("sources", [])
-    if source in proj["sources"]:
-        return "Source already added.", *select_project(selected_display)
-    proj["sources"].append(source)
-    save_projects()
-    # attempt to index immediately if pipeline available
-    pipeline = ensure_pipeline_for_project(pid)
-    if pipeline is None:
-        status = f"Source added to project '{proj['name']}', pipeline not initialized yet."
-        info_md, sources_md = select_project(selected_display)
-        return status, info_md, sources_md
-    try:
-        res = pipeline.index(source=source, project_id=pid)
-        if inspect.isawaitable(res):
-            asyncio.run(cast(Coroutine[Any, Any, Any], res))
-        status = f"Source added and indexing started for {source}"
-        info_md, sources_md = select_project(selected_display)
-        return status, info_md, sources_md
-    except Exception:
-        logger.exception("Indexing failed for %s in project %s", source, pid)
-        status = f"Source added but indexing failed for {source}"
-        info_md, sources_md = select_project(selected_display)
-        return status, info_md, sources_md
-
 
 def index_source_for_project(selected_display: str, source: str) -> str:
     pid = _display_to_pid.get(selected_display)
@@ -281,9 +485,7 @@ def index_source_for_project(selected_display: str, source: str) -> str:
         logger.exception("Index failed for %s project %s", source, pid)
         return f"Indexing failed for {source}"
 
-
 # ---------- Chat actions ----------
-
 
 def format_history_for_pipeline(history: Optional[List[Tuple[str, str]]]) -> List[Dict[str, str]]:
     if not history:
@@ -299,7 +501,6 @@ def format_history_for_pipeline(history: Optional[List[Tuple[str, str]]]) -> Lis
         if bot:
             convo.append({"role": "assistant", "content": bot})
     return convo
-
 
 def respond(selected_display: str, message: str, chat_history: Optional[List[Tuple[str, str]]]):
     pid = _display_to_pid.get(selected_display)
@@ -327,12 +528,10 @@ def respond(selected_display: str, message: str, chat_history: Optional[List[Tup
     new_history.append((message, answer))
     return "", new_history
 
-
 def clear_chat():
     """Clear the chat history and feedback state."""
     _feedback_given.clear()
     return "", []
-
 
 def handle_feedback(selected_display: str, data: gr.LikeData):
     """
@@ -376,10 +575,7 @@ def handle_feedback(selected_display: str, data: gr.LikeData):
     except Exception as e:
         logger.exception("Failed to handle feedback: %s", e)
 
-
 # ---------- UI (single Gradio app with tabs) ----------
-
-
 def build_ui(run_mode: str = "local"):
     port = int(os.getenv("CHATBOT_PORT", "7860"))
     host = "127.0.0.1" if run_mode == "local" else "0.0.0.0"
@@ -397,19 +593,18 @@ def build_ui(run_mode: str = "local"):
                         admin_dropdown = gr.Dropdown(choices=_project_choices(), label="Select project", value=None)
                         project_info = gr.Markdown("No project selected.")
                         project_sources = gr.Markdown("No sources.")
+                        
                         gr.Markdown("### Create new project")
                         name_in = gr.Textbox(label="Project name", placeholder="My Project")
+                        description_in = gr.Textbox(label="Description (optional)", placeholder="Project description")
                         llm_in = gr.Textbox(label="LLM", placeholder=os.getenv("DEMO_LLM", "gemini"))
                         embed_in = gr.Textbox(label="Embed model", placeholder=os.getenv("DEMO_EMBED_MODEL", "gemini"))
                         create_btn = gr.Button("Create project")
                         create_status = gr.Markdown("")
 
-                        # Bind later after chat_dropdown exists
-
                         gr.Markdown("### Delete project")
                         delete_btn = gr.Button("Delete selected project", variant="stop")
                         delete_status = gr.Markdown("")
-                        # Bind later after chat_dropdown exists
 
                         admin_dropdown.change(fn=select_project, inputs=[admin_dropdown], outputs=[project_info, project_sources])
 
@@ -424,12 +619,11 @@ def build_ui(run_mode: str = "local"):
                         upload_file = gr.File(label="Upload file", file_count="single", type="filepath")
                         upload_status = gr.Markdown("")
                         upload_file.upload(fn=add_uploaded_file, inputs=[admin_dropdown, upload_file], outputs=[upload_status, project_info, project_sources])
-  
 
                     with gr.Column(scale=4):
                         gr.Markdown("# Admin: Projects")
                         gr.Markdown(
-                            "Use this tab to create projects (persisted to projects.json), delete them, and add sources for a selected project."
+                            "Use this tab to create projects (stored in database), delete them, and add sources for a selected project."
                         )
                         gr.Markdown("Switch to the 'Chat' tab to ask questions for a selected project.")
 
@@ -452,11 +646,46 @@ def build_ui(run_mode: str = "local"):
                 chatbot.like(handle_feedback, inputs=[chat_dropdown], outputs=None)
                 chat_dropdown.change(fn=clear_chat, inputs=None, outputs=[msg, chatbot])
 
-        # Bind create/delete now that both dropdowns exist
-        create_btn.click(fn=create_project, inputs=[name_in, llm_in, embed_in], outputs=[admin_dropdown, chat_dropdown, create_status])
-        delete_btn.click(fn=delete_project, inputs=[admin_dropdown], outputs=[admin_dropdown, chat_dropdown, delete_status])
+            # Evaluate tab
+            evaluate_components = create_evaluate_tab(
+                projects=projects,
+                display_to_pid=_display_to_pid,
+                project_choices_func=_project_choices,
+                save_single_project_func=save_single_project_to_db 
+            )
+        
+        # Define function to update all dropdowns
+        def update_all_dropdowns():
+            choices = _project_choices()
+            return [
+                gr.update(choices=choices),  # admin_dropdown
+                gr.update(choices=choices),  # chat_dropdown  
+                gr.update(choices=choices),  # evaluate dropdown
+            ]
+        
+        # Bind create/delete to update all dropdowns
+        create_btn.click(
+            fn=create_project, 
+            inputs=[name_in, llm_in, embed_in, description_in], 
+            outputs=[admin_dropdown, chat_dropdown, create_status]
+        ).then(
+            fn=lambda: gr.update(choices=_project_choices()),
+            inputs=[],
+            outputs=[evaluate_components["project_dropdown"]]
+        )
+        
+        delete_btn.click(
+            fn=delete_project, 
+            inputs=[admin_dropdown], 
+            outputs=[admin_dropdown, chat_dropdown, delete_status]
+        ).then(
+            fn=lambda: gr.update(choices=_project_choices()),
+            inputs=[],
+            outputs=[evaluate_components["project_dropdown"]]
+        )
 
     demo.launch(server_name=host, server_port=port, share=False, inbrowser=inbrowser)
+
 
 # Handle uploaded file -> move to uploads/<pid>/ and index via add_source
 def add_uploaded_file(selected_display: str, uploaded_file_path: str) -> Tuple[str, str, str]:
@@ -490,8 +719,6 @@ def add_uploaded_file(selected_display: str, uploaded_file_path: str) -> Tuple[s
     except Exception as e:
         logger.exception("Failed to handle uploaded file: %s", e)
         return f"Failed to save/index uploaded file: {e}", *select_project(selected_display)
-
-
 
 if __name__ == "__main__":
     import sys

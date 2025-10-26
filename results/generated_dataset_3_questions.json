@@ -1,0 +1,19 @@
+{
+  "source_document": "demo_docs/sample.txt",
+  "num_questions": 3,
+  "generation_method": "RagDatasetGenerator with Gemini",
+  "questions": [
+    {
+      "question": "What is YASRL, and what core technologies does it combine to achieve its primary goal?",
+      "reference_answer": "Generated question 1 from document chunks"
+    },
+    {
+      "question": "List three distinct key features of the YASRL system as described in the document.",
+      "reference_answer": "Generated question 2 from document chunks"
+    },
+    {
+      "question": "According to the provided information, what types of embedding models does YASRL support, and what document formats can it process efficiently?",
+      "reference_answer": "Generated question 3 from document chunks"
+    }
+  ]
+}

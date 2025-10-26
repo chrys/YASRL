@@ -1,11 +1,1 @@
-{
-  "1c920a21136444a099fc6450542d405b": {
-    "name": "Happy Payments",
-    "llm": "gemini",
-    "embed_model": "gemini",
-    "sources": [
-      "https://www.ir.com/guides/introduction-to-iso-8583",
-      "/Users/chrys/Projects/YASRL/data/happy_payments.txt"
-    ]
-  }
-}
+{}
