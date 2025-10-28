@@ -84,7 +84,7 @@ def get_qa_pairs_for_source(conn: connection, project_id: int, source: str) -> p
     Retrieves QA pairs for a specific project and source from the database.
     """
     query = """
-        SELECT question, answer, context
+        SELECT id, question, answer, context
         FROM project_qa_pairs
         WHERE project_id = %s AND source = %s;
     """
@@ -92,7 +92,7 @@ def get_qa_pairs_for_source(conn: connection, project_id: int, source: str) -> p
         with conn.cursor() as cursor:
             cursor.execute(query, (project_id, source))
             rows = cursor.fetchall()
-            df = pd.DataFrame(rows, columns=["question", "answer", "context"])
+            df = pd.DataFrame(rows, columns=["id", "question", "answer", "context"])
         return df
     except Exception as e:
         logger.error(f"Failed to retrieve QA pairs for project {project_id} and source {source}: {e}")
@@ -417,6 +417,78 @@ def main():
             print("\n12. Database connection closed")
 
     print("\n🎉 Database functions demo completed successfully!")
+    
+
+def delete_qa_pairs_by_ids(conn: connection, qa_pair_ids: List[int]) -> bool:
+    """
+    Delete QA pairs by their IDs.
+    
+    Args:
+        conn: Database connection
+        qa_pair_ids: List of QA pair IDs to delete
+    
+    Returns:
+        True if deletion was successful, False otherwise
+    """
+    if not qa_pair_ids:
+        return True
+    
+    try:
+        with conn.cursor() as cursor:
+            placeholders = ','.join(['%s'] * len(qa_pair_ids))
+            query = f"DELETE FROM project_qa_pairs WHERE id IN ({placeholders})"
+            cursor.execute(query, tuple(qa_pair_ids))
+            conn.commit()
+            logger.info(f"Successfully deleted {len(qa_pair_ids)} QA pairs")
+            return True
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to delete QA pairs: {e}")
+        return False
+
+def add_qa_pairs_to_source(conn: connection, project_id: int, source: str, qa_pairs: List[Dict[str, str]]) -> int:
+    """
+    Add or update QA pairs for a specific project and source.
+    
+    Args:
+        conn: Database connection
+        project_id: Project ID
+        source: Source identifier
+        qa_pairs: List of dicts with 'question', 'answer', 'context' keys
+    
+    Returns:
+        Number of QA pairs added/updated
+    """
+    upsert_query = """
+        INSERT INTO project_qa_pairs (project_id, source, question, answer, context, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (project_id, source, question) DO UPDATE SET
+            answer = EXCLUDED.answer,
+            context = EXCLUDED.context,
+            updated_at = CURRENT_TIMESTAMP;
+    """
+    
+    try:
+        with conn.cursor() as cursor:
+            count = 0
+            for pair in qa_pairs:
+                cursor.execute(upsert_query, (
+                    int(project_id),
+                    str(source),
+                    str(pair['question']),
+                    str(pair['answer']),
+                    str(pair.get('context', ''))
+                ))
+                count += 1
+            
+            conn.commit()
+            logger.info(f"Successfully added/updated {count} QA pairs for project {project_id} and source {source}")
+            return count
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to add QA pairs for project {project_id} and source {source}: {e}")
+        return 0
+
 
 if __name__ == "__main__":
     main()
