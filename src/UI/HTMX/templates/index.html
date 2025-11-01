@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Demo</title>
+    <script src="https://unpkg.com/htmx.org"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-brand">Chatbot Demo</div>
+            <ul class="nav-menu">
+                <li>
+                    <a href="/page/admin" 
+                       hx-get="/page/admin" 
+                       hx-target="#page-content" 
+                       hx-push-url="true"
+                       class="nav-link">
+                        Admin
+                    </a>
+                </li>
+                <li>
+                    <a href="/page/chat" 
+                       hx-get="/page/chat" 
+                       hx-target="#page-content" 
+                       hx-push-url="true"
+                       class="nav-link">
+                        Chat
+                    </a>
+                </li>
+                <li>
+                    <a href="/page/evaluate" 
+                       hx-get="/page/evaluate" 
+                       hx-target="#page-content" 
+                       hx-push-url="true"
+                       class="nav-link">
+                        Evaluate
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Page Content -->
+        <main id="page-content" class="page-content">
+            <div class="welcome">
+                <h1>Welcome to Chatbot Demo</h1>
+                <p>Select a page from the navigation above to get started.</p>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

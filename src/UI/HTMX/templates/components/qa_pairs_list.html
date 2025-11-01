@@ -1,0 +1,59 @@
+{% if error %}
+    <div class="card">
+        <div class="alert alert-error">
+            <strong>Error:</strong> {{ error }}
+        </div>
+    </div>
+{% elif qa_pairs %}
+    <div class="card">
+        <h3>QA Pairs for: {{ source }}</h3>
+        <div class="qa-pairs-list">
+            {% for qa_pair in qa_pairs %}
+                <div class="qa-pair-item" id="qa-pair-{{ qa_pair.id }}">
+                    <!-- View Mode -->
+                    <div class="qa-pair-view" id="view-{{ qa_pair.id }}">
+                        <div class="qa-question">
+                            <strong>Q:</strong> {{ qa_pair.question }}
+                        </div>
+                        <div class="qa-answer">
+                            <strong>A:</strong> {{ qa_pair.answer }}
+                        </div>
+                        {% if qa_pair.context %}
+                            <div class="qa-context">
+                                <strong>Context:</strong> {{ qa_pair.context }}
+                            </div>
+                        {% endif %}
+                        <div class="qa-pair-actions">
+                            <button class="btn btn-small btn-primary" onclick="editQAPair({{ qa_pair.id }})">Edit</button>
+                            <button class="btn btn-small btn-danger" onclick="deleteQAPair({{ qa_pair.id }})">Delete</button>
+                        </div>
+                    </div>
+
+                    <!-- Edit Mode -->
+                    <div class="qa-pair-edit" id="edit-{{ qa_pair.id }}" style="display: none;">
+                        <div class="form-group">
+                            <label>Question</label>
+                            <input type="text" class="form-input qa-edit-question" value="{{ qa_pair.question }}" placeholder="Enter question...">
+                        </div>
+                        <div class="form-group">
+                            <label>Answer</label>
+                            <textarea class="form-textarea qa-edit-answer" placeholder="Enter answer..." rows="3">{{ qa_pair.answer }}</textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Context (Optional)</label>
+                            <textarea class="form-textarea qa-edit-context" placeholder="Enter context..." rows="2">{{ qa_pair.context or '' }}</textarea>
+                        </div>
+                        <div class="qa-pair-actions">
+                            <button class="btn btn-small btn-primary" onclick="saveQAPair({{ qa_pair.id }})">Save</button>
+                            <button class="btn btn-small btn-secondary" onclick="cancelEditQAPair({{ qa_pair.id }})">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+{% else %}
+    <div class="card">
+        <p class="text-muted">No QA pairs yet for this source. Create one using the form on the left.</p>
+    </div>
+{% endif %}

@@ -1,0 +1,74 @@
+{% if project %}
+    <div class="card">
+        <div class="project-header">
+            <div>
+                <h3>{{ project.name }}</h3>
+                {% if project.description %}
+                    <p class="text-muted">{{ project.description }}</p>
+                {% endif %}
+            </div>
+            <button onclick="deleteProject({{ project.id }}, '{{ project.name }}')" class="btn btn-danger btn-sm">Delete Project</button>
+        </div>
+
+        <div class="project-info">
+            <div class="info-item">
+                <span class="label">LLM:</span>
+                <span class="badge badge-llm">{{ project.llm }}</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Embed Model:</span>
+                <span class="badge badge-embed">{{ project.embed_model }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sources Section -->
+    <div class="card">
+        <h3>Sources</h3>
+        
+        {% if sources %}
+            <div class="sources-list">
+                {% for source in sources %}
+                    <div class="source-item">
+                        <span class="source-path">{{ source }}</span>
+                        <button onclick="removeSource({{ project.id }}, '{{ source }}')" class="btn btn-danger btn-xs">Remove</button>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">No sources added yet</p>
+        {% endif %}
+    </div>
+
+    <!-- Add Sources Section -->
+    <div class="card">
+        <h3>Add Sources</h3>
+        
+        <div class="source-input-section">
+            <h4>From File</h4>
+            <div class="form-group">
+                <input type="file" id="source-file-input" accept=".txt,.pdf,.md,.doc,.docx" multiple>
+                <button onclick="addSource({{ project.id }}, 'file')" class="btn btn-secondary">Upload File</button>
+            </div>
+        </div>
+
+        <div class="source-input-section">
+            <h4>From URL or Path</h4>
+            <div class="form-group">
+                <input type="text" id="source-text-input" placeholder="e.g., https://example.com/doc.txt or /path/to/file.txt">
+                <button onclick="addSource({{ project.id }}, 'text')" class="btn btn-secondary">Add Source</button>
+            </div>
+        </div>
+    </div>
+
+{% elif error %}
+    <div class="card">
+        <div class="alert alert-error">
+            <strong>Error:</strong> {{ error }}
+        </div>
+    </div>
+{% else %}
+    <div class="card">
+        <p class="text-muted">Select a project from the list to manage its sources</p>
+    </div>
+{% endif %}

@@ -1,0 +1,364 @@
+<section class="page evaluate-page">
+    <header class="page-header">
+        <h1>Evaluate</h1>
+        <p class="page-description">Review and manage QA pairs for evaluation</p>
+    </header>
+    
+    <div class="page-content-wrapper">
+        <div class="evaluate-grid">
+            <!-- Left Column: Project and Source Selection -->
+            <div class="evaluate-column">
+                <!-- Project Selection -->
+                <div class="card">
+                    <h2>Select Project</h2>
+                    <div class="form-group">
+                        <label for="eval-project-select">Project:</label>
+                        <select id="eval-project-select" class="project-select">
+                            <option value="">-- Select a project --</option>
+                        </select>
+                    </div>
+                    <div id="no-projects-eval" class="no-projects-message" style="display: none;">
+                        No projects available. Please create a project in the Admin page first.
+                    </div>
+                </div>
+
+                <!-- Source Selection -->
+                <div class="card" id="sources-card" style="display: none;">
+                    <h2>Select Source</h2>
+                    <div class="form-group">
+                        <label for="eval-source-select">Source:</label>
+                        <select id="eval-source-select" class="project-select">
+                            <option value="">-- Select a source --</option>
+                        </select>
+                    </div>
+                    <div id="no-sources-eval" class="no-sources-message" style="display: none;">
+                        No sources available for this project.
+                    </div>
+                </div>
+
+                <!-- Add New QA Pair Form -->
+                <div class="card" id="add-qa-card" style="display: none;">
+                    <h2>Add New QA Pair</h2>
+                    <div class="form-group">
+                        <label for="eval-question">Question *</label>
+                        <input type="text" id="eval-question" class="form-input" placeholder="Enter question..." required>
+                    </div>
+                    <div class="form-group">
+                        <label for="eval-answer">Answer *</label>
+                        <textarea id="eval-answer" class="form-textarea" placeholder="Enter answer..." rows="3" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="eval-context">Context (Optional)</label>
+                        <textarea id="eval-context" class="form-textarea" placeholder="Enter context..." rows="3"></textarea>
+                    </div>
+                    <button id="add-qa-btn" class="btn btn-primary btn-block">Add QA Pair</button>
+                </div>
+            </div>
+
+            <!-- Right Column: QA Pairs Display -->
+            <div class="evaluate-column">
+                <div id="qa-pairs-container">
+                    <div class="card">
+                        <p class="text-muted">Select a project and source to view QA pairs</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function initializeEvaluatePage() {
+            loadProjectsForEvaluation();
+            setupEvaluateListeners();
+        }
+
+        // Load projects on page load (both initial and HTMX dynamic load)
+        document.addEventListener('DOMContentLoaded', initializeEvaluatePage);
+        document.addEventListener('htmx:load', initializeEvaluatePage);
+        
+        // Also trigger immediately in case already loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeEvaluatePage);
+        } else {
+            initializeEvaluatePage();
+        }
+
+        // Load projects from database
+        function loadProjectsForEvaluation() {
+            fetch('/api/projects')
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const projectItems = doc.querySelectorAll('.project-item');
+                    
+                    const projectSelect = document.getElementById('eval-project-select');
+                    const noProjectsMsg = document.getElementById('no-projects-eval');
+                    
+                    // Clear existing options (except the placeholder)
+                    projectSelect.innerHTML = '<option value="">-- Select a project --</option>';
+                    
+                    if (projectItems.length === 0) {
+                        noProjectsMsg.style.display = 'block';
+                        document.getElementById('sources-card').style.display = 'none';
+                        document.getElementById('add-qa-card').style.display = 'none';
+                    } else {
+                        noProjectsMsg.style.display = 'none';
+                        projectItems.forEach(item => {
+                            const projectName = item.textContent.trim().split('\n')[0];
+                            const projectId = item.getAttribute('onclick')?.match(/\d+/)?.[0];
+                            
+                            if (projectId && projectName) {
+                                const option = document.createElement('option');
+                                option.value = projectId;
+                                option.textContent = projectName;
+                                projectSelect.appendChild(option);
+                            }
+                        });
+                    }
+                })
+                .catch(error => console.error('Error loading projects:', error));
+        }
+
+        // Setup event listeners
+        function setupEvaluateListeners() {
+            const projectSelect = document.getElementById('eval-project-select');
+            const sourceSelect = document.getElementById('eval-source-select');
+            const addQaBtn = document.getElementById('add-qa-btn');
+            
+            // Project selection changed
+            projectSelect.addEventListener('change', () => {
+                const projectId = projectSelect.value;
+                
+                if (projectId) {
+                    loadSourcesForProject(projectId);
+                    document.getElementById('sources-card').style.display = 'block';
+                    document.getElementById('add-qa-card').style.display = 'block';
+                } else {
+                    document.getElementById('sources-card').style.display = 'none';
+                    document.getElementById('add-qa-card').style.display = 'none';
+                    document.getElementById('qa-pairs-container').innerHTML = 
+                        '<div class="card"><p class="text-muted">Select a project and source to view QA pairs</p></div>';
+                }
+                
+                // Reset source selection
+                sourceSelect.innerHTML = '<option value="">-- Select a source --</option>';
+            });
+            
+            // Source selection changed
+            sourceSelect.addEventListener('change', () => {
+                const projectId = projectSelect.value;
+                const source = sourceSelect.value;
+                
+                if (projectId && source) {
+                    loadQAPairsForSource(projectId, source);
+                } else {
+                    document.getElementById('qa-pairs-container').innerHTML = 
+                        '<div class="card"><p class="text-muted">Select a source to view QA pairs</p></div>';
+                }
+            });
+            
+            // Add QA pair button
+            addQaBtn.addEventListener('click', addNewQAPair);
+        }
+
+        // Load sources for selected project
+        function loadSourcesForProject(projectId) {
+            fetch(`/api/projects/${projectId}/details`)
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const sourceItems = doc.querySelectorAll('.source-item');
+                    
+                    const sourceSelect = document.getElementById('eval-source-select');
+                    const noSourcesMsg = document.getElementById('no-sources-eval');
+                    
+                    // Extract source paths
+                    const sources = [];
+                    sourceItems.forEach(item => {
+                        const sourceText = item.textContent.trim();
+                        if (sourceText) {
+                            sources.push(sourceText.split('\n')[0]);
+                        }
+                    });
+                    
+                    // Populate select
+                    sourceSelect.innerHTML = '<option value="">-- Select a source --</option>';
+                    
+                    if (sources.length === 0) {
+                        noSourcesMsg.style.display = 'block';
+                    } else {
+                        noSourcesMsg.style.display = 'none';
+                        sources.forEach(source => {
+                            const option = document.createElement('option');
+                            option.value = source;
+                            option.textContent = source;
+                            sourceSelect.appendChild(option);
+                        });
+                    }
+                })
+                .catch(error => console.error('Error loading sources:', error));
+        }
+
+        // Load QA pairs for selected source
+        function loadQAPairsForSource(projectId, source) {
+            fetch(`/api/projects/${projectId}/sources/${encodeURIComponent(source)}/qa-pairs`)
+                .then(response => {
+                    if (!response.ok) throw new Error('Failed to load QA pairs');
+                    return response.text();
+                })
+                .then(html => {
+                    document.getElementById('qa-pairs-container').innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading QA pairs:', error);
+                    document.getElementById('qa-pairs-container').innerHTML = 
+                        '<div class="card"><p class="error">Failed to load QA pairs</p></div>';
+                });
+        }
+
+        // Add new QA pair
+        function addNewQAPair() {
+            const projectId = document.getElementById('eval-project-select').value;
+            const source = document.getElementById('eval-source-select').value;
+            const question = document.getElementById('eval-question').value.trim();
+            const answer = document.getElementById('eval-answer').value.trim();
+            const context = document.getElementById('eval-context').value.trim();
+            
+            if (!projectId || !source || !question || !answer) {
+                alert('Please fill in all required fields (Question and Answer)');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('project_id', projectId);
+            formData.append('source', source);
+            formData.append('question', question);
+            formData.append('answer', answer);
+            formData.append('context', context);
+            
+            fetch('/api/projects/qa-pairs/add', { method: 'POST', body: formData })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Clear form
+                        document.getElementById('eval-question').value = '';
+                        document.getElementById('eval-answer').value = '';
+                        document.getElementById('eval-context').value = '';
+                        
+                        // Refresh QA pairs display
+                        loadQAPairsForSource(projectId, source);
+                        
+                        alert('QA pair added successfully!');
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to add QA pair');
+                });
+        }
+
+        // Delete QA pair
+        function deleteQAPair(qaId) {
+            const projectId = document.getElementById('eval-project-select').value;
+            
+            if (!confirm('Are you sure you want to delete this QA pair?')) {
+                return;
+            }
+            
+            fetch(`/api/projects/qa-pairs/${qaId}/delete?project_id=${projectId}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Reload QA pairs
+                        const source = document.getElementById('eval-source-select').value;
+                        loadQAPairsForSource(projectId, source);
+                        alert('QA pair deleted successfully!');
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to delete QA pair');
+                });
+        }
+
+        // Edit QA pair - toggle to edit mode
+        function editQAPair(qaId) {
+            const viewMode = document.getElementById(`view-${qaId}`);
+            const editMode = document.getElementById(`edit-${qaId}`);
+            
+            if (viewMode && editMode) {
+                viewMode.style.display = 'none';
+                editMode.style.display = 'block';
+            }
+        }
+
+        // Cancel edit - toggle back to view mode
+        function cancelEditQAPair(qaId) {
+            const viewMode = document.getElementById(`view-${qaId}`);
+            const editMode = document.getElementById(`edit-${qaId}`);
+            
+            if (viewMode && editMode) {
+                editMode.style.display = 'none';
+                viewMode.style.display = 'block';
+            }
+        }
+
+        // Save edited QA pair
+        function saveQAPair(qaId) {
+            const projectId = document.getElementById('eval-project-select').value;
+            const source = document.getElementById('eval-source-select').value;
+            
+            const editContainer = document.getElementById(`edit-${qaId}`);
+            const question = editContainer.querySelector('.qa-edit-question').value.trim();
+            const answer = editContainer.querySelector('.qa-edit-answer').value.trim();
+            const context = editContainer.querySelector('.qa-edit-context').value.trim();
+            
+            if (!question || !answer) {
+                alert('Question and Answer are required');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('qa_pair_id', qaId);
+            formData.append('project_id', projectId);
+            formData.append('source', source);
+            formData.append('question', question);
+            formData.append('answer', answer);
+            formData.append('context', context);
+            
+            fetch('/api/projects/qa-pairs/update', { method: 'POST', body: formData })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Reload QA pairs
+                        loadQAPairsForSource(projectId, source);
+                        alert('QA pair updated successfully!');
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to update QA pair');
+                });
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+    </script>
+</section>

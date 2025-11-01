@@ -1,0 +1,198 @@
+<section class="page admin-page">
+    <header class="page-header">
+        <h1>Admin</h1>
+        <p class="page-description">Manage projects and their sources</p>
+    </header>
+    
+    <div class="page-content-wrapper">
+        <!-- Projects Section -->
+        <div class="admin-grid">
+            <!-- Left Column: Project Selection and Management -->
+            <div class="admin-column">
+                <!-- Project List -->
+                <div class="card">
+                    <h2>Projects</h2>
+                    <div id="projects-container">
+                        <div class="loading">No projects found.</div>
+                    </div>
+                </div>
+
+                <!-- Create New Project -->
+                <div class="card">
+                    <h2>Create New Project</h2>
+                    <form id="create-project-form" hx-post="/api/projects/create" hx-target="#projects-container" hx-swap="innerHTML">
+                        <div class="form-group">
+                            <label for="project-name">Project Name *</label>
+                            <input type="text" id="project-name" name="name" required placeholder="e.g., My RAG Project">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="project-description">Description</label>
+                            <textarea id="project-description" name="description" placeholder="Describe your project..." rows="3"></textarea>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="project-llm">LLM Model</label>
+                                <select id="project-llm" name="llm">
+                                    <option value="gemini" selected>Gemini</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="claude">Claude</option>
+                                    <option value="huggingface">HuggingFace</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="project-embed">Embed Model</label>
+                                <select id="project-embed" name="embed_model">
+                                    <option value="gemini" selected>Gemini</option>
+                                    <option value="openai">OpenAI</option>
+                                    <option value="huggingface">HuggingFace</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Create Project</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Right Column: Project Details and Sources -->
+            <div class="admin-column">
+                <div id="project-details-container">
+                    <div class="card">
+                        <p class="text-muted">Select a project from the list to manage its sources</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load projects on page initialization -->
+    <script>
+        function loadProjects() {
+            const container = document.getElementById('projects-container');
+            fetch('/api/projects')
+                .then(response => response.text())
+                .then(html => {
+                    container.innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading projects:', error);
+                    container.innerHTML = '<div class="error">Failed to load projects</div>';
+                });
+        }
+
+        function selectProject(projectId) {
+            fetch(`/api/projects/${projectId}/details`)
+                .then(response => response.text())
+                .then(html => {
+                    document.getElementById('project-details-container').innerHTML = html;
+                })
+                .catch(error => {
+                    console.error('Error loading project details:', error);
+                });
+        }
+
+        function deleteProject(projectId, projectName) {
+            if (confirm(`Are you sure you want to delete "${projectName}"? This will also delete all its sources.`)) {
+                fetch(`/api/projects/${projectId}/delete`, { method: 'DELETE' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            loadProjects();
+                            document.getElementById('project-details-container').innerHTML = 
+                                '<div class="card"><p class="text-muted">Select a project from the list to manage its sources</p></div>';
+                        } else {
+                            alert('Error deleting project: ' + data.error);
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+            }
+        }
+
+        function addSource(projectId, sourceType) {
+            let source = null;
+            
+            if (sourceType === 'text') {
+                source = document.getElementById('source-text-input').value.trim();
+                if (!source) {
+                    alert('Please enter a source path or URL');
+                    return;
+                }
+            } else if (sourceType === 'file') {
+                const fileInput = document.getElementById('source-file-input');
+                if (!fileInput.files.length) {
+                    alert('Please select a file');
+                    return;
+                }
+                // For file uploads, we'll use FormData
+                const formData = new FormData();
+                formData.append('project_id', projectId);
+                formData.append('source_type', 'file');
+                formData.append('file', fileInput.files[0]);
+                
+                fetch('/api/projects/sources/add', { method: 'POST', body: formData })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            selectProject(projectId); // Refresh project details
+                            fileInput.value = '';
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+                return;
+            }
+            
+            // For text sources
+            const formData = new FormData();
+            formData.append('project_id', projectId);
+            formData.append('source_type', 'text');
+            formData.append('source', source);
+            
+            fetch('/api/projects/sources/add', { method: 'POST', body: formData })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        selectProject(projectId); // Refresh project details
+                        document.getElementById('source-text-input').value = '';
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function removeSource(projectId, source) {
+            if (confirm(`Remove source: ${source}?`)) {
+                const formData = new FormData();
+                formData.append('project_id', projectId);
+                formData.append('source', source);
+                
+                fetch('/api/projects/sources/remove', { method: 'POST', body: formData })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            selectProject(projectId); // Refresh project details
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+            }
+        }
+
+        // Load projects when page is loaded or inserted via HTMX
+        document.addEventListener('DOMContentLoaded', loadProjects);
+        document.addEventListener('htmx:load', loadProjects);
+        
+        // Also trigger immediately in case already loaded
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadProjects);
+        } else {
+            loadProjects();
+        }
+    </script>
+</section>

@@ -1,0 +1,21 @@
+{% if error %}
+    <div class="alert alert-error">
+        <strong>Error:</strong> {{ error }}
+    </div>
+{% elif projects %}
+    <div class="projects-list">
+        {% for project in projects %}
+            <div class="project-item" onclick="selectProject({{ project.id }})">
+                <div class="project-name">{{ project.name }}</div>
+                <div class="project-meta">
+                    <span class="badge badge-llm">{{ project.llm }}</span>
+                    <span class="badge badge-embed">{{ project.embed_model }}</span>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="empty-state">
+        <p>No projects found.</p>
+    </div>
+{% endif %}

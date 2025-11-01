@@ -1,0 +1,171 @@
+<section class="page chat-page">
+    <header class="page-header">
+        <h1>Chat</h1>
+        <p class="page-description">Interact with the chatbot</p>
+    </header>
+    
+    <div class="page-content-wrapper">
+        <!-- Project Selection -->
+        <div class="chat-project-selector">
+            <label for="project-select">Select a Project:</label>
+            <select id="project-select" class="project-select">
+                <option value="">-- Select a project --</option>
+            </select>
+            <div id="no-projects-message" class="no-projects-message" style="display: none;">
+                No projects available. Please create a project in the Admin page first.
+            </div>
+        </div>
+
+        <!-- Chat Container -->
+        <div class="chat-container" id="chat-container">
+            <div class="chat-messages" id="chat-messages">
+                <div class="message bot-message">
+                    <p>Hello! How can I assist you today?</p>
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <input 
+                    type="text" 
+                    id="chat-input" 
+                    class="chat-input" 
+                    placeholder="Type your message... (Press Enter or click Send)"
+                    disabled
+                >
+                <button id="chat-send-btn" class="chat-send-btn" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+    function initializeChatPage() {
+        loadProjectsForChat();
+        setupChatListeners();
+    }
+
+    // Load projects on page load (both initial and HTMX dynamic load)
+    document.addEventListener('DOMContentLoaded', initializeChatPage);
+    document.addEventListener('htmx:load', initializeChatPage);
+    
+    // Also trigger immediately in case already loaded
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeChatPage);
+    } else {
+        initializeChatPage();
+    }
+
+    // Load projects from database
+    function loadProjectsForChat() {
+        fetch('/api/projects')
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const projectItems = doc.querySelectorAll('.project-item');
+                
+                const projectSelect = document.getElementById('project-select');
+                const noProjectsMessage = document.getElementById('no-projects-message');
+                const chatInput = document.getElementById('chat-input');
+                const sendBtn = document.getElementById('chat-send-btn');
+                
+                // Clear existing options (except the placeholder)
+                projectSelect.innerHTML = '<option value="">-- Select a project --</option>';
+                
+                if (projectItems.length === 0) {
+                    // No projects available
+                    noProjectsMessage.style.display = 'block';
+                    chatInput.disabled = true;
+                    sendBtn.disabled = true;
+                } else {
+                    // Add each project as option
+                    noProjectsMessage.style.display = 'none';
+                    projectItems.forEach(item => {
+                        const projectName = item.textContent.trim().split('\n')[0];
+                        const projectId = item.getAttribute('onclick')?.match(/\d+/)?.[0];
+                        
+                        if (projectId && projectName) {
+                            const option = document.createElement('option');
+                            option.value = projectId;
+                            option.textContent = projectName;
+                            projectSelect.appendChild(option);
+                        }
+                    });
+                }
+            })
+            .catch(error => console.error('Error loading projects:', error));
+    }
+
+    // Setup chat event listeners
+    function setupChatListeners() {
+        const projectSelect = document.getElementById('project-select');
+        const chatInput = document.getElementById('chat-input');
+        const sendBtn = document.getElementById('chat-send-btn');
+        
+        // Enable/disable input based on project selection
+        projectSelect.addEventListener('change', () => {
+            const isSelected = projectSelect.value !== '';
+            chatInput.disabled = !isSelected;
+            sendBtn.disabled = !isSelected;
+        });
+        
+        // Send message on Enter key
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        // Send message on Send button click
+        sendBtn.addEventListener('click', sendMessage);
+    }
+
+    // Send message function
+    function sendMessage() {
+        const chatInput = document.getElementById('chat-input');
+        const messageText = chatInput.value.trim();
+        
+        if (messageText === '') return;
+        
+        const chatMessages = document.getElementById('chat-messages');
+        
+        // Add user message
+        const userMessageDiv = document.createElement('div');
+        userMessageDiv.className = 'message user-message';
+        userMessageDiv.innerHTML = `<p>${escapeHtml(messageText)}</p>`;
+        chatMessages.appendChild(userMessageDiv);
+        
+        // Clear input
+        chatInput.value = '';
+        
+        // Auto-scroll to bottom
+        scrollToBottom();
+        
+        // Add bot reply (placeholder for now)
+        setTimeout(() => {
+            const botMessageDiv = document.createElement('div');
+            botMessageDiv.className = 'message bot-message';
+            botMessageDiv.innerHTML = '<p>REPLY</p>';
+            chatMessages.appendChild(botMessageDiv);
+            scrollToBottom();
+        }, 500);
+    }
+
+    // Auto-scroll to bottom
+    function scrollToBottom() {
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+</script>
