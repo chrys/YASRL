@@ -1,20 +1,15 @@
-"""
-HTMX SPA for chatbot demonstration with Admin, Chat, and Evaluate pages.
-Provides instant page transitions with URL updates.
-"""
+import asyncio
+import logging
+import os
+from pathlib import Path
+import importlib.util
+from threading import Thread
+import uuid
 
 from flask import Flask, render_template, request, jsonify
-import os
-import sys
-import logging
-import asyncio
-import uuid
-from pathlib import Path
-from threading import Thread
-import importlib.util
+from dotenv import load_dotenv
 
 # Load environment variables first
-from dotenv import load_dotenv
 load_dotenv()
 
 # Import database module directly without triggering package __init__
@@ -42,9 +37,6 @@ if spec and spec.loader:
 else:
     raise ImportError("Could not load database module")
 
-# Load environment variables
-load_dotenv()
-
 app = Flask(__name__, 
             template_folder=os.path.join(os.path.dirname(__file__), 'templates'),
             static_folder=os.path.join(os.path.dirname(__file__), 'static'))
@@ -69,7 +61,6 @@ else:
         logger.error(f"Failed to initialize database: {e}")
         db_connection = None
 
-
 # ============================================================================
 # Indexing Progress Tracking
 # ============================================================================
@@ -77,19 +68,51 @@ else:
 indexing_progress = {}
 
 
-def start_indexing_async(project_id: int, source: str, tracking_id: str, llm: str, embed_model: str):
+def _sanitize_project_name(project_name: str) -> str:
+    """
+    Sanitize project name for use as table name.
+    Converts to lowercase, replaces special characters with underscores.
+    Format: happy_payments (no prefix, PGVectorStore adds 'data_' automatically)
+    """
+    # Convert to lowercase and remove special characters
+    sanitized = "".join(c.lower() if c.isalnum() else "_" for c in project_name)
+    # Remove consecutive underscores
+    sanitized = "_".join(filter(None, sanitized.split("_")))
+    # Ensure it doesn't start with number or special char
+    if sanitized and not sanitized[0].isalpha():
+        sanitized = f"proj_{sanitized}"
+    # Return just the project name, PGVectorStore will add 'data_' prefix
+    return f"yasrl_{sanitized}"
+
+
+def start_indexing_async(project_id: int, project_name: str, source: str, tracking_id: str, llm: str, embed_model: str):
     """
     Run the indexing process in a background thread and update progress.
+    Uses a dedicated table per project with naming convention: data_yasrl_projectname
     """
     try:
         from yasrl.pipeline import RAGPipeline
+        from yasrl.vector_store import VectorStoreManager
         
         indexing_progress[tracking_id] = {"status": "in_progress", "progress": 10, "errors": []}
-        logger.info(f"Starting indexing for source: {source} (tracking_id: {tracking_id})")
+        logger.info(f"Starting indexing for source: {source} (tracking_id: {tracking_id}, project: {project_name})")
         
-        # Create pipeline instance
+        # Create project-specific table prefix
+        table_prefix = _sanitize_project_name(project_name)
+        logger.info(f"Using table prefix: {table_prefix}")
+        
+        # Create pipeline instance with project-specific vector store
         try:
-            pipeline = RAGPipeline(llm=llm, embed_model=embed_model)
+            if not POSTGRES_URI:
+                raise ValueError("POSTGRES_URI is not configured")
+            
+            db_manager = VectorStoreManager(
+                postgres_uri=POSTGRES_URI,
+                vector_dimensions=768,
+                table_prefix=table_prefix
+            )
+            
+            pipeline = RAGPipeline(llm=llm, embed_model=embed_model, db_manager=db_manager)
             indexing_progress[tracking_id]["progress"] = 20
             
             # Run indexing async
@@ -99,17 +122,17 @@ def start_indexing_async(project_id: int, source: str, tracking_id: str, llm: st
                     await pipeline.index(source, project_id=str(project_id))
                     indexing_progress[tracking_id]["progress"] = 100
                     indexing_progress[tracking_id]["status"] = "completed"
-                    logger.info(f"Indexing completed successfully for source: {source}")
+                    logger.info(f"Indexing completed successfully for source: {source} in project: {project_name}")
                 except Exception as e:
                     error_msg = str(e)
-                    logger.error(f"Indexing failed for source {source}: {error_msg}")
+                    logger.error(f"Indexing failed for source {source} in project {project_name}: {error_msg}")
                     indexing_progress[tracking_id]["status"] = "error"
                     indexing_progress[tracking_id]["errors"].append(error_msg)
             
             asyncio.run(do_index())
             
         except Exception as e:
-            error_msg = f"Failed to initialize pipeline: {str(e)}"
+            error_msg = f"Failed to initialize pipeline for project {project_name}: {str(e)}"
             logger.error(error_msg)
             indexing_progress[tracking_id]["status"] = "error"
             indexing_progress[tracking_id]["errors"].append(error_msg)
@@ -179,7 +202,7 @@ def api_create_project():
             'description': request.form.get('description', '').strip(),
             'llm': request.form.get('llm', 'gemini'),
             'embed_model': request.form.get('embed_model', 'gemini'),
-            'sources': [] # Sources will be added separately
+            'sources': []
         }
         
         if not project_data['name']:
@@ -269,13 +292,13 @@ def api_add_source():
         project_id = int(project_id_str)
         source_type = request.form.get('source_type', 'text')
         
-        # Get project info for LLM and embed_model
+        # Get project info for LLM, embed_model, and name
         with db_connection.cursor() as cursor:
-            cursor.execute("SELECT llm, embed_model FROM projects WHERE id = %s", (project_id,))
+            cursor.execute("SELECT llm, embed_model, name FROM projects WHERE id = %s", (project_id,))
             project_row = cursor.fetchone()
             if not project_row:
                 return jsonify({'success': False, 'error': 'Project not found'}), 404
-            llm, embed_model = project_row
+            llm, embed_model, project_name = project_row
         
         if source_type == 'file':
             if 'file' not in request.files:
@@ -285,13 +308,8 @@ def api_add_source():
             if file.filename == '':
                 return jsonify({'success': False, 'error': 'No file selected'}), 400
             
-            # Store file path (in real app, you'd upload to storage)
             source_path = f"uploads/{project_id}/{file.filename}"
-            
-            # Create uploads directory if needed
             os.makedirs(os.path.dirname(source_path), exist_ok=True)
-            
-            # Save file
             file.save(source_path)
             sources = [source_path]
             source_for_indexing = source_path
@@ -305,13 +323,13 @@ def api_add_source():
         # Add source to database
         add_project_sources(db_connection, project_id, sources)
         
-        # Start indexing in background thread
+        # Start indexing in background thread with project-specific table
         tracking_id = str(uuid.uuid4())
         indexing_progress[tracking_id] = {"status": "pending", "progress": 0, "errors": []}
         
         thread = Thread(
             target=start_indexing_async,
-            args=(project_id, source_for_indexing, tracking_id, llm, embed_model),
+            args=(project_id, project_name, source_for_indexing, tracking_id, llm, embed_model),
             daemon=True
         )
         thread.start()
@@ -401,14 +419,12 @@ def api_add_qa_pair():
         if not source or not question or not answer:
             return jsonify({'success': False, 'error': 'Source, question, and answer are required'}), 400
         
-        # Create QA pair as a list of dicts
         qa_pairs = [{
             'question': question,
             'answer': answer,
             'context': context
         }]
         
-        # Add to database
         add_qa_pairs_to_source(db_connection, project_id, source, qa_pairs)
         
         return jsonify({'success': True, 'message': 'QA pair added successfully'})
@@ -456,7 +472,6 @@ def api_update_qa_pair():
         if not source or not question or not answer:
             return jsonify({'success': False, 'error': 'Source, question, and answer are required'}), 400
         
-        # Update the QA pair using direct SQL since we don't have an update function yet
         with db_connection.cursor() as cursor:
             cursor.execute("""
                 UPDATE project_qa_pairs

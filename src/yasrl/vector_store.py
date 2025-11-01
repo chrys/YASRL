@@ -34,11 +34,13 @@ class VectorStoreManager:
         Args:
             postgres_uri: The connection URI for the PostgreSQL database.
             vector_dimensions: The dimensionality of the embedding vectors.
-            table_prefix: The prefix for the database table names.
+            table_prefix: The prefix for the database table names (e.g., 'yasrl_happy_payments').
+                         PGVectorStore will automatically add 'data_' prefix, resulting in table: 'data_yasrl_happy_payments'
         """
         self.postgres_uri = postgres_uri
         self.vector_dimensions = vector_dimensions
-        self.table_name = f"{table_prefix}_data"  
+        # PGVectorStore will use this as the table_name and prepend 'data_' automatically
+        self.table_name = table_prefix  
         self._vector_store: Optional[PGVectorStore] = None
         self._pool: Optional[SimpleConnectionPool] = None
 
