@@ -656,8 +656,7 @@ def build_ui(run_mode: str = "local"):
                 save_single_project_func=save_single_project_to_db 
             )
             
-            # Evaluation Demo tab
-            create_evaluation_demo_tab()
+
         
         # Define function to update all dropdowns
         def update_all_dropdowns():
