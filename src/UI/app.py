@@ -406,7 +406,9 @@ def delete_project(selected_display: str) -> Tuple[UIUpdate, UIUpdate, str]:
     if not proj:
         return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "Project not found."
     
-    project_name = proj.get("name")
+    project_name = proj.get("name", "")
+    if not project_name:
+        return gr.update(choices=_project_choices()), gr.update(choices=_project_choices()), "Error: Project name is missing."
     
     # try cleanup if available
     try:
@@ -653,6 +655,9 @@ def build_ui(run_mode: str = "local"):
                 project_choices_func=_project_choices,
                 save_single_project_func=save_single_project_to_db 
             )
+            
+            # Evaluation Demo tab
+            create_evaluation_demo_tab()
         
         # Define function to update all dropdowns
         def update_all_dropdowns():

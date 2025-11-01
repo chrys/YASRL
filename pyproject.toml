@@ -33,6 +33,7 @@ dependencies = [
     "langchain-google-genai", 
     "sacrebleu",
     "markitdown[all]",
+    "flask",
 ]
 
 [project.optional-dependencies]
