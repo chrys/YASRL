@@ -46,6 +46,35 @@ def setup_projects_table(conn: connection):
         logger.error(f"Failed to create projects table: {e}")
         raise
 
+def setup_project_sources_table(conn: connection):
+    """
+    Creates the project_sources table if it doesn't exist.
+    """
+    try:
+        with conn.cursor() as cursor:
+            logger.info("Creating project_sources table if it doesn't exist...")
+            
+            # Create table only if it doesn't exist 
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS project_sources (
+                    id BIGSERIAL PRIMARY KEY,
+                    project_id BIGINT NOT NULL,
+                    source_path TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    CONSTRAINT project_sources_project_id_fkey 
+                        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                    CONSTRAINT project_sources_unique 
+                        UNIQUE (project_id, source_path)
+                );
+            """)
+            
+            conn.commit()
+            logger.info("project_sources table setup complete.")
+    except psycopg2.Error as e:
+        conn.rollback()
+        logger.error(f"Failed to create project_sources table: {e}")
+        raise
+
 def setup_project_qa_pairs_table(conn: connection):
     """
     Creates the project_qa_pairs table if it doesn't exist.
@@ -264,6 +293,70 @@ def delete_project_by_name(conn: connection, name: str) -> bool:
         logger.exception(f"Failed to delete project '{name}' from database")
         conn.rollback()
         return False
+
+def add_project_sources(conn: connection, project_id: int, sources: List[str]) -> int:
+    """
+    Add sources to a project.
+    """
+    added_count = 0
+    try:
+        with conn.cursor() as cursor:
+            for source in sources:
+                try:
+                    cursor.execute(
+                        "INSERT INTO project_sources (project_id, source_path) VALUES (%s, %s)",
+                        (project_id, source)
+                    )
+                    added_count += 1
+                except psycopg2.IntegrityError:
+                    conn.rollback()
+                    logger.warning(f"Source '{source}' already exists for project {project_id}")
+                    continue
+            conn.commit()
+            logger.info(f"Added {added_count} source(s) to project {project_id}")
+            return added_count
+    except Exception as e:
+        logger.exception(f"Failed to add sources to project {project_id}")
+        conn.rollback()
+        return 0
+
+def get_project_sources(conn: connection, project_id: int) -> List[str]:
+    """
+    Get all sources for a project.
+    """
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT source_path FROM project_sources WHERE project_id = %s ORDER BY created_at",
+                (project_id,)
+            )
+            rows = cursor.fetchall()
+            sources = [row[0] for row in rows]
+            return sources
+    except Exception as e:
+        logger.exception(f"Failed to get sources for project {project_id}")
+        return []
+
+def remove_project_sources(conn: connection, project_id: int, sources: List[str]) -> int:
+    """
+    Remove sources from a project.
+    """
+    removed_count = 0
+    try:
+        with conn.cursor() as cursor:
+            for source in sources:
+                cursor.execute(
+                    "DELETE FROM project_sources WHERE project_id = %s AND source_path = %s",
+                    (project_id, source)
+                )
+                removed_count += cursor.rowcount
+            conn.commit()
+            logger.info(f"Removed {removed_count} source(s) from project {project_id}")
+            return removed_count
+    except Exception as e:
+        logger.exception(f"Failed to remove sources from project {project_id}")
+        conn.rollback()
+        return 0
 
 # Also update the main() function to handle the conversion properly:
 def main():
