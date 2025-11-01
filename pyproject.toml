@@ -34,6 +34,7 @@ dependencies = [
     "sacrebleu",
     "markitdown[all]",
     "flask",
+    "pytest-playwright",
 ]
 
 [project.optional-dependencies]
