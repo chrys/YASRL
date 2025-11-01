@@ -125,7 +125,8 @@ def api_create_project():
             'name': request.form.get('name', '').strip(),
             'description': request.form.get('description', '').strip(),
             'llm': request.form.get('llm', 'gemini'),
-            'embed_model': request.form.get('embed_model', 'gemini')
+            'embed_model': request.form.get('embed_model', 'gemini'),
+            'sources': [] # Sources will be added separately
         }
         
         if not project_data['name']:
@@ -209,7 +210,10 @@ def api_add_source():
         return jsonify({'success': False, 'error': 'Database not connected'}), 500
     
     try:
-        project_id = int(request.form.get('project_id'))
+        project_id_str = request.form.get('project_id')
+        if not project_id_str:
+            return jsonify({'success': False, 'error': 'Project ID is required'}), 400
+        project_id = int(project_id_str)
         source_type = request.form.get('source_type', 'text')
         
         if source_type == 'file':
@@ -249,7 +253,10 @@ def api_remove_source():
         return jsonify({'success': False, 'error': 'Database not connected'}), 500
     
     try:
-        project_id = int(request.form.get('project_id'))
+        project_id_str = request.form.get('project_id')
+        if not project_id_str:
+            return jsonify({'success': False, 'error': 'Project ID is required'}), 400
+        project_id = int(project_id_str)
         source = request.form.get('source', '').strip()
         
         if not source:
@@ -288,7 +295,10 @@ def api_add_qa_pair():
         return jsonify({'success': False, 'error': 'Database not connected'}), 500
     
     try:
-        project_id = int(request.form.get('project_id'))
+        project_id_str = request.form.get('project_id')
+        if not project_id_str:
+            return jsonify({'success': False, 'error': 'Project ID is required'}), 400
+        project_id = int(project_id_str)
         source = request.form.get('source', '').strip()
         question = request.form.get('question', '').strip()
         answer = request.form.get('answer', '').strip()
@@ -320,7 +330,10 @@ def api_delete_qa_pair(qa_pair_id):
         return jsonify({'success': False, 'error': 'Database not connected'}), 500
     
     try:
-        project_id = int(request.args.get('project_id'))
+        project_id_str = request.args.get('project_id')
+        if not project_id_str:
+            return jsonify({'success': False, 'error': 'Project ID is required'}), 400
+        project_id = int(project_id_str)
         delete_qa_pairs_by_ids(db_connection, project_id, [qa_pair_id])
         return jsonify({'success': True, 'message': 'QA pair deleted successfully'})
     except Exception as e:
@@ -335,8 +348,12 @@ def api_update_qa_pair():
         return jsonify({'success': False, 'error': 'Database not connected'}), 500
     
     try:
-        qa_pair_id = int(request.form.get('qa_pair_id'))
-        project_id = int(request.form.get('project_id'))
+        qa_pair_id_str = request.form.get('qa_pair_id')
+        project_id_str = request.form.get('project_id')
+        if not qa_pair_id_str or not project_id_str:
+            return jsonify({'success': False, 'error': 'QA pair ID and project ID are required'}), 400
+        qa_pair_id = int(qa_pair_id_str)
+        project_id = int(project_id_str)
         source = request.form.get('source', '').strip()
         question = request.form.get('question', '').strip()
         answer = request.form.get('answer', '').strip()
