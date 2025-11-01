@@ -7,7 +7,10 @@ from flask import Flask, render_template, request, jsonify
 import os
 import sys
 import logging
+import asyncio
+import uuid
 from pathlib import Path
+from threading import Thread
 import importlib.util
 
 # Load environment variables first
@@ -65,6 +68,56 @@ else:
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         db_connection = None
+
+
+# ============================================================================
+# Indexing Progress Tracking
+# ============================================================================
+# tracking_id -> {"status": "pending|in_progress|completed|error", "progress": int, "errors": list}
+indexing_progress = {}
+
+
+def start_indexing_async(project_id: int, source: str, tracking_id: str, llm: str, embed_model: str):
+    """
+    Run the indexing process in a background thread and update progress.
+    """
+    try:
+        from yasrl.pipeline import RAGPipeline
+        
+        indexing_progress[tracking_id] = {"status": "in_progress", "progress": 10, "errors": []}
+        logger.info(f"Starting indexing for source: {source} (tracking_id: {tracking_id})")
+        
+        # Create pipeline instance
+        try:
+            pipeline = RAGPipeline(llm=llm, embed_model=embed_model)
+            indexing_progress[tracking_id]["progress"] = 20
+            
+            # Run indexing async
+            async def do_index():
+                try:
+                    indexing_progress[tracking_id]["progress"] = 30
+                    await pipeline.index(source, project_id=str(project_id))
+                    indexing_progress[tracking_id]["progress"] = 100
+                    indexing_progress[tracking_id]["status"] = "completed"
+                    logger.info(f"Indexing completed successfully for source: {source}")
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.error(f"Indexing failed for source {source}: {error_msg}")
+                    indexing_progress[tracking_id]["status"] = "error"
+                    indexing_progress[tracking_id]["errors"].append(error_msg)
+            
+            asyncio.run(do_index())
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize pipeline: {str(e)}"
+            logger.error(error_msg)
+            indexing_progress[tracking_id]["status"] = "error"
+            indexing_progress[tracking_id]["errors"].append(error_msg)
+            
+    except Exception as e:
+        error_msg = f"Unexpected error during indexing: {str(e)}"
+        logger.error(error_msg)
+        indexing_progress[tracking_id] = {"status": "error", "progress": 0, "errors": [error_msg]}
 
 
 # ============================================================================
@@ -205,7 +258,7 @@ def api_delete_project(project_id):
 
 @app.route('/api/projects/sources/add', methods=['POST'])
 def api_add_source():
-    """Add a source to a project."""
+    """Add a source to a project and start indexing with progress tracking."""
     if not db_connection:
         return jsonify({'success': False, 'error': 'Database not connected'}), 500
     
@@ -215,6 +268,14 @@ def api_add_source():
             return jsonify({'success': False, 'error': 'Project ID is required'}), 400
         project_id = int(project_id_str)
         source_type = request.form.get('source_type', 'text')
+        
+        # Get project info for LLM and embed_model
+        with db_connection.cursor() as cursor:
+            cursor.execute("SELECT llm, embed_model FROM projects WHERE id = %s", (project_id,))
+            project_row = cursor.fetchone()
+            if not project_row:
+                return jsonify({'success': False, 'error': 'Project not found'}), 404
+            llm, embed_model = project_row
         
         if source_type == 'file':
             if 'file' not in request.files:
@@ -233,14 +294,33 @@ def api_add_source():
             # Save file
             file.save(source_path)
             sources = [source_path]
+            source_for_indexing = source_path
         else:
             source = request.form.get('source', '').strip()
             if not source:
                 return jsonify({'success': False, 'error': 'Source path/URL cannot be empty'}), 400
             sources = [source]
+            source_for_indexing = source
         
+        # Add source to database
         add_project_sources(db_connection, project_id, sources)
-        return jsonify({'success': True, 'message': 'Source added'})
+        
+        # Start indexing in background thread
+        tracking_id = str(uuid.uuid4())
+        indexing_progress[tracking_id] = {"status": "pending", "progress": 0, "errors": []}
+        
+        thread = Thread(
+            target=start_indexing_async,
+            args=(project_id, source_for_indexing, tracking_id, llm, embed_model),
+            daemon=True
+        )
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Source added and indexing started',
+            'tracking_ids': [tracking_id]
+        })
     except Exception as e:
         logger.error(f"Error adding source: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -267,6 +347,20 @@ def api_remove_source():
     except Exception as e:
         logger.error(f"Error removing source: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============================================================================
+# API Routes: Indexing Progress
+# ============================================================================
+
+@app.route('/api/indexing/progress/<tracking_id>', methods=['GET'])
+def api_indexing_progress(tracking_id):
+    """Return the progress for a given indexing operation."""
+    progress = indexing_progress.get(
+        tracking_id,
+        {"status": "unknown", "progress": 0, "errors": []}
+    )
+    return jsonify(progress)
 
 
 # ============================================================================

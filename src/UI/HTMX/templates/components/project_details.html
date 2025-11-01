@@ -47,7 +47,7 @@
         <div class="source-input-section">
             <h4>From File</h4>
             <div class="form-group">
-                <input type="file" id="source-file-input" accept=".txt,.pdf,.md,.doc,.docx" multiple>
+                <input type="file" id="source-file-input-{{ project.id }}" accept=".txt,.pdf,.md,.doc,.docx" multiple>
                 <button onclick="addSource({{ project.id }}, 'file')" class="btn btn-secondary">Upload File</button>
             </div>
         </div>
@@ -55,9 +55,27 @@
         <div class="source-input-section">
             <h4>From URL or Path</h4>
             <div class="form-group">
-                <input type="text" id="source-text-input" placeholder="e.g., https://example.com/doc.txt or /path/to/file.txt">
+                <input type="text" id="source-text-input-{{ project.id }}" placeholder="e.g., https://example.com/doc.txt or /path/to/file.txt">
                 <button onclick="addSource({{ project.id }}, 'text')" class="btn btn-secondary">Add Source</button>
             </div>
+        </div>
+
+        <!-- Indexing Progress Section -->
+        <div id="indexing-container-{{ project.id }}" class="indexing-container" style="display: none; margin-top: 20px;">
+            <h4>Indexing Progress</h4>
+            
+            <div class="progress-bar-wrapper">
+                <div class="progress-bar">
+                    <div id="progress-fill-{{ project.id }}" class="progress-fill" style="width: 0%;"></div>
+                </div>
+                <div id="progress-text-{{ project.id }}" class="progress-text">0%</div>
+            </div>
+            
+            <div id="indexing-status-{{ project.id }}" class="indexing-status">Preparing to index...</div>
+            
+            <div id="indexing-errors-{{ project.id }}" class="indexing-errors" style="display: none; margin-top: 10px;"></div>
+            
+            <div id="status-message-{{ project.id }}" class="status-message" style="display: none; margin-top: 10px;"></div>
         </div>
     </div>
 

@@ -70,11 +70,18 @@
 
     <!-- Load projects on page initialization -->
     <script>
+        // These functions are page-specific and not in global scope
         function loadProjects() {
             const container = document.getElementById('projects-container');
+            if (!container) {
+                console.warn('[admin] projects-container not found');
+                return;
+            }
+            console.log('[admin] Loading projects...');
             fetch('/api/projects')
                 .then(response => response.text())
                 .then(html => {
+                    console.log('[admin] Projects loaded');
                     container.innerHTML = html;
                 })
                 .catch(error => {
@@ -83,116 +90,16 @@
                 });
         }
 
-        function selectProject(projectId) {
-            fetch(`/api/projects/${projectId}/details`)
-                .then(response => response.text())
-                .then(html => {
-                    document.getElementById('project-details-container').innerHTML = html;
-                })
-                .catch(error => {
-                    console.error('Error loading project details:', error);
-                });
-        }
-
-        function deleteProject(projectId, projectName) {
-            if (confirm(`Are you sure you want to delete "${projectName}"? This will also delete all its sources.`)) {
-                fetch(`/api/projects/${projectId}/delete`, { method: 'DELETE' })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            loadProjects();
-                            document.getElementById('project-details-container').innerHTML = 
-                                '<div class="card"><p class="text-muted">Select a project from the list to manage its sources</p></div>';
-                        } else {
-                            alert('Error deleting project: ' + data.error);
-                        }
-                    })
-                    .catch(error => console.error('Error:', error));
-            }
-        }
-
-        function addSource(projectId, sourceType) {
-            let source = null;
-            
-            if (sourceType === 'text') {
-                source = document.getElementById('source-text-input').value.trim();
-                if (!source) {
-                    alert('Please enter a source path or URL');
-                    return;
-                }
-            } else if (sourceType === 'file') {
-                const fileInput = document.getElementById('source-file-input');
-                if (!fileInput.files.length) {
-                    alert('Please select a file');
-                    return;
-                }
-                // For file uploads, we'll use FormData
-                const formData = new FormData();
-                formData.append('project_id', projectId);
-                formData.append('source_type', 'file');
-                formData.append('file', fileInput.files[0]);
-                
-                fetch('/api/projects/sources/add', { method: 'POST', body: formData })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            selectProject(projectId); // Refresh project details
-                            fileInput.value = '';
-                        } else {
-                            alert('Error: ' + data.error);
-                        }
-                    })
-                    .catch(error => console.error('Error:', error));
-                return;
-            }
-            
-            // For text sources
-            const formData = new FormData();
-            formData.append('project_id', projectId);
-            formData.append('source_type', 'text');
-            formData.append('source', source);
-            
-            fetch('/api/projects/sources/add', { method: 'POST', body: formData })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        selectProject(projectId); // Refresh project details
-                        document.getElementById('source-text-input').value = '';
-                    } else {
-                        alert('Error: ' + data.error);
-                    }
-                })
-                .catch(error => console.error('Error:', error));
-        }
-
-        function removeSource(projectId, source) {
-            if (confirm(`Remove source: ${source}?`)) {
-                const formData = new FormData();
-                formData.append('project_id', projectId);
-                formData.append('source', source);
-                
-                fetch('/api/projects/sources/remove', { method: 'POST', body: formData })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            selectProject(projectId); // Refresh project details
-                        } else {
-                            alert('Error: ' + data.error);
-                        }
-                    })
-                    .catch(error => console.error('Error:', error));
-            }
-        }
-
-        // Load projects when page is loaded or inserted via HTMX
-        document.addEventListener('DOMContentLoaded', loadProjects);
-        document.addEventListener('htmx:load', loadProjects);
+        // Load projects when page is loaded
+        console.log('[admin] Script executed');
+        loadProjects();
         
-        // Also trigger immediately in case already loaded
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', loadProjects);
-        } else {
-            loadProjects();
-        }
+        // Also listen to the custom pageLoaded event
+        document.addEventListener('pageLoaded', function(e) {
+            if (e.detail && e.detail.url && e.detail.url.includes('/admin')) {
+                console.log('[admin] pageLoaded event received');
+                loadProjects();
+            }
+        });
     </script>
 </section>
