@@ -200,3 +200,11 @@ src/evals/.deepeval/.deepeval-cache.json
 src/evals/results/basic_evaluation_results.json
 src/evals/results/deepeval_evaluation_results_happy_payments.json
 src/evals/.deepeval/
+.github/
+.specify/
+docs/migrations/
+specs/
+src/yasrl/utils/
+tests/contract/
+tests/integration/
+uploads/42/
