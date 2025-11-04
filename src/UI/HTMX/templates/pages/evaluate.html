@@ -36,6 +36,20 @@
                     </div>
                 </div>
 
+                <!-- Generation Card -->
+                <div class="card" id="generation-card" style="display: none;">
+                    <h2>Generate QA Pairs</h2>
+                    <div class="form-group">
+                        <label for="qa-count-display">Number of QA Pairs:</label>
+                        <p id="qa-count-display" class="qa-count-value">0</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="generate-count-input">Generate QA Pairs:</label>
+                        <input type="number" id="generate-count-input" class="form-input" placeholder="Enter number of QA pairs to generate" min="1" value="5">
+                    </div>
+                    <button id="generate-btn" class="btn btn-primary btn-block">Generate</button>
+                </div>
+
                 <!-- Add New QA Pair Form -->
                 <div class="card" id="add-qa-card" style="display: none;">
                     <h2>Add New QA Pair</h2>
@@ -152,11 +166,27 @@
                 
                 if (projectId && source) {
                     loadQAPairsForSource(projectId, source);
+                    document.getElementById('generation-card').style.display = 'block';
                 } else {
                     document.getElementById('qa-pairs-container').innerHTML = 
                         '<div class="card"><p class="text-muted">Select a source to view QA pairs</p></div>';
+                    document.getElementById('generation-card').style.display = 'none';
                 }
             });
+            
+            // Generate button
+            const generateBtn = document.getElementById('generate-btn');
+            if (generateBtn) {
+                generateBtn.addEventListener('click', () => {
+                    const projectId = projectSelect.value;
+                    const source = sourceSelect.value;
+                    const count = document.getElementById('generate-count-input').value;
+                    
+                    if (projectId && source && count) {
+                        generateQAPairs(projectId, source, count);
+                    }
+                });
+            }
             
             // Add QA pair button
             addQaBtn.addEventListener('click', addNewQAPair);
@@ -210,6 +240,11 @@
                 })
                 .then(html => {
                     document.getElementById('qa-pairs-container').innerHTML = html;
+                    
+                    // Count QA pairs and update display
+                    const qaPairElements = document.querySelectorAll('[id^="qa-pair-"]');
+                    const qaCount = qaPairElements.length;
+                    document.getElementById('qa-count-display').textContent = qaCount;
                 })
                 .catch(error => {
                     console.error('Error loading QA pairs:', error);
@@ -360,5 +395,14 @@
             };
             return text.replace(/[&<>"']/g, m => map[m]);
         }
+
+        // Generate QA pairs
+        function generateQAPairs(projectId, source, count) {
+            console.log(`[EVALUATE] Generating ${count} QA pairs for project ${projectId}, source: ${source}`);
+            
+            // TODO: Implement QA pair generation functionality
+            alert(`Generate ${count} QA pairs for:\nProject ID: ${projectId}\nSource: ${source}`);
+        }
     </script>
 </section>
+

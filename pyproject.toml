@@ -16,6 +16,9 @@ dependencies = [
     "llama-index-vector-stores-postgres",
     "llama-index-embeddings-gemini",
     "llama-index-llms-gemini",
+    "llama-index-llms-google-genai",
+    "llama-index-embeddings-google-genai",
+    "llama-index-question-gen-openai",
     "asyncio",
     "dataclasses; python_version<'3.10'",
     "logging",
@@ -35,6 +38,8 @@ dependencies = [
     "markitdown[all]",
     "flask",
     "pytest-playwright",
+    "google-genai",
+    "spacy",
 ]
 
 [project.optional-dependencies]

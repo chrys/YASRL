@@ -144,6 +144,149 @@ def start_indexing_async(project_id: int, project_name: str, source: str, tracki
 
 
 # ============================================================================
+# Chat Processing
+# ============================================================================
+# Cache for pipelines: project_id -> RAGPipeline instance
+_pipeline_cache = {}
+
+
+def _get_or_init_pipeline(project_id: int, project_name: str, llm: str, embed_model: str):
+    """
+    Get cached pipeline or initialize a new one for the project.
+    Uses project-specific vector store table.
+    """
+    cache_key = project_id
+    
+    # Return cached pipeline if available
+    if cache_key in _pipeline_cache:
+        logger.info(f"Using cached pipeline for project {project_id}")
+        return _pipeline_cache[cache_key]
+    
+    try:
+        from yasrl.pipeline import RAGPipeline
+        from yasrl.vector_store import VectorStoreManager
+        
+        if not POSTGRES_URI:
+            raise ValueError("POSTGRES_URI is not configured")
+        
+        # Create project-specific table prefix
+        table_prefix = _sanitize_project_name(project_name)
+        logger.info(f"Initializing pipeline for project {project_id} with table prefix: {table_prefix}")
+        
+        db_manager = VectorStoreManager(
+            postgres_uri=POSTGRES_URI,
+            vector_dimensions=768,
+            table_prefix=table_prefix
+        )
+        
+        pipeline = RAGPipeline(llm=llm, embed_model=embed_model, db_manager=db_manager)
+        
+        # Cache the pipeline
+        _pipeline_cache[cache_key] = pipeline
+        logger.info(f"Pipeline initialized and cached for project {project_id}")
+        return pipeline
+    except Exception as e:
+        logger.error(f"Failed to initialize pipeline for project {project_id}: {e}")
+        raise
+
+
+@app.route('/api/chat/send', methods=['POST'])
+def api_chat_send():
+    """
+    Process a chat message and return the answer with sources.
+    
+    Expected request data:
+    {
+        "project_id": int,
+        "message": str,
+        "chat_history": [{"role": "user|assistant", "content": str}, ...]
+    }
+    """
+    if not db_connection:
+        return jsonify({'success': False, 'error': 'Database not connected'}), 500
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'Request body is required'}), 400
+        
+        project_id = data.get('project_id')
+        message = data.get('message', '').strip()
+        chat_history = data.get('chat_history', [])
+        
+        if not project_id:
+            return jsonify({'success': False, 'error': 'Project ID is required'}), 400
+        
+        if not message:
+            return jsonify({'success': False, 'error': 'Message cannot be empty'}), 400
+        
+        project_id = int(project_id)
+        
+        # Step 2.1: Lookup Project
+        logger.info(f"Chat message received for project {project_id}: {message[:50]}...")
+        with db_connection.cursor() as cursor:
+            cursor.execute("SELECT llm, embed_model, name FROM projects WHERE id = %s", (project_id,))
+            project_row = cursor.fetchone()
+            if not project_row:
+                return jsonify({'success': False, 'error': 'Project not found'}), 404
+            llm, embed_model, project_name = project_row
+        
+        # Step 2.2: Initialize/Get Pipeline
+        try:
+            pipeline = _get_or_init_pipeline(project_id, project_name, llm, embed_model)
+        except Exception as e:
+            error_msg = f"Failed to initialize pipeline: {str(e)}"
+            logger.error(error_msg)
+            return jsonify({'success': False, 'error': error_msg}), 500
+        
+        # Step 3: Format Chat History (already in correct format from frontend)
+        formatted_history = chat_history if isinstance(chat_history, list) else []
+        
+        # Step 4: Call pipeline.ask()
+        try:
+            result = asyncio.run(pipeline.ask(query=message, conversation_history=formatted_history))
+        except Exception as e:
+            error_msg = f"Error processing question: {str(e)}"
+            logger.error(error_msg)
+            logger.exception(e)
+            return jsonify({'success': False, 'error': error_msg}), 500
+        
+        # Step 5: Format Answer + Sources
+        answer = getattr(result, 'answer', '') or ''
+        source_chunks = getattr(result, 'source_chunks', []) or []
+        
+        # Extract unique sources from chunks
+        sources = []
+        seen_sources = set()
+        for chunk in source_chunks:
+            source = chunk.metadata.get('source', 'Unknown') if hasattr(chunk, 'metadata') else 'Unknown'
+            if source not in seen_sources:
+                sources.append({
+                    'source': source,
+                    'text': chunk.text if hasattr(chunk, 'text') else '',
+                    'score': float(chunk.score) if hasattr(chunk, 'score') and chunk.score else None
+                })
+                seen_sources.add(source)
+        
+        logger.info(f"Answer generated with {len(sources)} unique sources for project {project_id}")
+        
+        return jsonify({
+            'success': True,
+            'answer': answer,
+            'sources': sources,
+            'message': f"Answer generated with {len(sources)} source(s)"
+        })
+    
+    except ValueError as e:
+        logger.error(f"Validation error in chat: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Unexpected error in chat endpoint: {e}")
+        logger.exception(e)
+        return jsonify({'success': False, 'error': f"Internal server error: {str(e)}"}), 500
+
+
+# ============================================================================
 # Page Routes
 # ============================================================================
 

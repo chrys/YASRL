@@ -38,14 +38,21 @@
 </section>
 
 <script>
+    // Global chat state
+    let chatHistory = [];
+    let currentProjectId = null;
+    let isProcessing = false;
+
     function initializeChatPage() {
         loadProjectsForChat();
         setupChatListeners();
+        console.log('[CHAT] Page initialized');
     }
 
     // Load projects on page load (both initial and HTMX dynamic load)
     document.addEventListener('DOMContentLoaded', initializeChatPage);
     document.addEventListener('htmx:load', initializeChatPage);
+    document.addEventListener('pageLoaded', initializeChatPage);
     
     // Also trigger immediately in case already loaded
     if (document.readyState === 'loading') {
@@ -76,12 +83,13 @@
                     noProjectsMessage.style.display = 'block';
                     chatInput.disabled = true;
                     sendBtn.disabled = true;
+                    console.log('[CHAT] No projects available');
                 } else {
                     // Add each project as option
                     noProjectsMessage.style.display = 'none';
                     projectItems.forEach(item => {
                         const projectName = item.textContent.trim().split('\n')[0];
-                        const projectId = item.getAttribute('onclick')?.match(/\d+/)?.[0];
+                        const projectId = item.getAttribute('data-project-id') || item.getAttribute('onclick')?.match(/\d+/)?.[0];
                         
                         if (projectId && projectName) {
                             const option = document.createElement('option');
@@ -90,9 +98,14 @@
                             projectSelect.appendChild(option);
                         }
                     });
+                    console.log(`[CHAT] Loaded ${projectItems.length} projects`);
                 }
             })
-            .catch(error => console.error('Error loading projects:', error));
+            .catch(error => {
+                console.error('[CHAT] Error loading projects:', error);
+                const projectSelect = document.getElementById('project-select');
+                projectSelect.innerHTML = '<option value="">Error loading projects</option>';
+            });
     }
 
     // Setup chat event listeners
@@ -101,16 +114,24 @@
         const chatInput = document.getElementById('chat-input');
         const sendBtn = document.getElementById('chat-send-btn');
         
-        // Enable/disable input based on project selection
-        projectSelect.addEventListener('change', () => {
+        // Handle project selection change
+        projectSelect.addEventListener('change', (e) => {
+            currentProjectId = e.target.value ? parseInt(e.target.value) : null;
             const isSelected = projectSelect.value !== '';
             chatInput.disabled = !isSelected;
-            sendBtn.disabled = !isSelected;
+            sendBtn.disabled = !isSelected || isProcessing;
+            
+            // Clear chat when switching projects
+            if (isSelected) {
+                clearChatMessages();
+                chatHistory = [];
+                console.log(`[CHAT] Project selected: ${currentProjectId}`);
+            }
         });
         
         // Send message on Enter key
         chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !isProcessing) {
                 e.preventDefault();
                 sendMessage();
             }
@@ -124,37 +145,116 @@
     function sendMessage() {
         const chatInput = document.getElementById('chat-input');
         const messageText = chatInput.value.trim();
+        const sendBtn = document.getElementById('chat-send-btn');
         
-        if (messageText === '') return;
+        if (messageText === '' || !currentProjectId || isProcessing) return;
+        
+        console.log(`[CHAT] Sending message to project ${currentProjectId}: ${messageText}`);
         
         const chatMessages = document.getElementById('chat-messages');
         
-        // Add user message
-        const userMessageDiv = document.createElement('div');
-        userMessageDiv.className = 'message user-message';
-        userMessageDiv.innerHTML = `<p>${escapeHtml(messageText)}</p>`;
-        chatMessages.appendChild(userMessageDiv);
+        // Add user message to display
+        addMessageToDisplay('user', messageText);
         
         // Clear input
         chatInput.value = '';
         
+        // Set processing state
+        isProcessing = true;
+        sendBtn.disabled = true;
+        
+        // Add to chat history
+        chatHistory.push({ role: 'user', content: messageText });
+        
         // Auto-scroll to bottom
         scrollToBottom();
         
-        // Add bot reply (placeholder for now)
-        setTimeout(() => {
-            const botMessageDiv = document.createElement('div');
-            botMessageDiv.className = 'message bot-message';
-            botMessageDiv.innerHTML = '<p>REPLY</p>';
-            chatMessages.appendChild(botMessageDiv);
+        // Call backend API
+        fetch('/api/chat/send', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                project_id: currentProjectId,
+                message: messageText,
+                chat_history: chatHistory
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            isProcessing = false;
+            sendBtn.disabled = false;
+            
+            if (data.success) {
+                const answer = data.answer || 'No answer generated';
+                const sources = data.sources || [];
+                
+                // Format answer with sources
+                let formattedAnswer = answer;
+                if (sources.length > 0) {
+                    formattedAnswer += '\n\n---\n**Sources:**\n';
+                    sources.forEach((source, index) => {
+                        formattedAnswer += `${index + 1}. ${source.source}`;
+                        if (source.score) {
+                            formattedAnswer += ` (relevance: ${(source.score * 100).toFixed(1)}%)`;
+                        }
+                        formattedAnswer += '\n';
+                    });
+                }
+                
+                // Add assistant message to display
+                addMessageToDisplay('assistant', formattedAnswer);
+                
+                // Add to chat history (without sources for next turn)
+                chatHistory.push({ role: 'assistant', content: answer });
+                
+                console.log(`[CHAT] Answer received with ${sources.length} sources`);
+            } else {
+                const errorMsg = data.error || 'An error occurred';
+                addMessageToDisplay('assistant', `Error: ${errorMsg}`);
+                console.error(`[CHAT] Error:`, errorMsg);
+            }
+            
             scrollToBottom();
-        }, 500);
+        })
+        .catch(error => {
+            isProcessing = false;
+            sendBtn.disabled = false;
+            console.error('[CHAT] Network error:', error);
+            addMessageToDisplay('assistant', `Network error: ${error.message}`);
+            scrollToBottom();
+        });
+    }
+
+    // Add message to display
+    function addMessageToDisplay(role, text) {
+        const chatMessages = document.getElementById('chat-messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${role}-message`;
+        
+        // Convert text to HTML with line breaks and basic formatting
+        const formattedText = escapeHtml(text)
+            .replace(/\n/g, '<br>')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/---/g, '<hr>');
+        
+        messageDiv.innerHTML = `<p>${formattedText}</p>`;
+        chatMessages.appendChild(messageDiv);
+    }
+
+    // Clear chat messages
+    function clearChatMessages() {
+        const chatMessages = document.getElementById('chat-messages');
+        chatMessages.innerHTML = '<div class="message bot-message"><p>Hello! How can I assist you today?</p></div>';
     }
 
     // Auto-scroll to bottom
     function scrollToBottom() {
         const chatMessages = document.getElementById('chat-messages');
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        setTimeout(() => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }, 0);
     }
 
     // Escape HTML to prevent XSS
