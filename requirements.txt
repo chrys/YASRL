@@ -6,3 +6,4 @@ pytest-mock
 black
 flake8
 mypy
+markitdown[all]
