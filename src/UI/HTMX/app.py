@@ -5,6 +5,19 @@ from pathlib import Path
 import importlib.util
 from threading import Thread
 import uuid
+import nest_asyncio
+
+# Apply nest_asyncio to allow nested event loops
+nest_asyncio.apply()
+
+# Dynamic import for generate_qa_pairs module
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'evals'))
+
+
+
+# Import QA generation functions
+#from evals.generate_qa_pairs import *
 
 from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
@@ -583,11 +596,7 @@ def api_delete_qa_pair(qa_pair_id):
         return jsonify({'success': False, 'error': 'Database not connected'}), 500
     
     try:
-        project_id_str = request.args.get('project_id')
-        if not project_id_str:
-            return jsonify({'success': False, 'error': 'Project ID is required'}), 400
-        project_id = int(project_id_str)
-        delete_qa_pairs_by_ids(db_connection, project_id, [qa_pair_id])
+        delete_qa_pairs_by_ids(db_connection, [qa_pair_id])
         return jsonify({'success': True, 'message': 'QA pair deleted successfully'})
     except Exception as e:
         logger.error(f"Error deleting QA pair: {e}")
@@ -634,6 +643,63 @@ def api_update_qa_pair():
     except Exception as e:
         db_connection.rollback()
         logger.error(f"Error updating QA pair: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+@app.route('/api/projects/qa-pairs/generate', methods=['POST'])
+def api_generate_qa_pairs():
+    """Generate QA pairs for a source using LlamaIndex DatasetGenerator."""
+    if not db_connection:
+        return jsonify({'success': False, 'error': 'Database not connected'}), 500
+    
+    try:
+        # Get parameters
+        project_id_str = request.form.get('project_id')
+        source = request.form.get('source', '').strip()
+        count_str = request.form.get('count', '5')
+        
+        if not project_id_str or not source:
+            return jsonify({'success': False, 'error': 'Project ID and source are required'}), 400
+        
+        project_id = int(project_id_str)
+        count = int(count_str)
+        
+        
+        
+        logger.info(f"Generating QA pairs for source: {source}")
+        
+        # TODO: Replace with actual QA generation logic
+        # For now, generate dummy QA pairs to test the endpoint
+        qa_pairs = []
+        for i in range(count):
+            qa_pairs.append({
+                'question': f'What is the meaning of concept {i+1} in {source}?',
+                'answer': f'Concept {i+1} is an important topic that discusses key information relevant to the document.',
+                'context': f'This QA pair was auto-generated from {source}'
+            })
+        
+        logger.info(f"Generated {len(qa_pairs)} dummy QA pairs for testing")
+        
+        if not qa_pairs:
+            return jsonify({
+                'success': False,
+                'error': 'Could not generate QA pairs from document'
+            }), 400
+        
+        # Save QA pairs to database
+        add_qa_pairs_to_source(db_connection, project_id, source, qa_pairs)
+        
+        logger.info(f"Successfully generated and saved {len(qa_pairs)} QA pairs")
+        return jsonify({
+            'success': True,
+            'generated': len(qa_pairs),
+            'message': f'Successfully generated {len(qa_pairs)} QA pairs'
+        })
+            
+    except ValueError as e:
+        return jsonify({'success': False, 'error': 'Invalid project ID or count'}), 400
+    except Exception as e:
+        db_connection.rollback()
+        logger.error(f"Error generating QA pairs: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

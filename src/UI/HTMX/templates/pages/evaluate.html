@@ -399,9 +399,30 @@
         // Generate QA pairs
         function generateQAPairs(projectId, source, count) {
             console.log(`[EVALUATE] Generating ${count} QA pairs for project ${projectId}, source: ${source}`);
-            
-            // TODO: Implement QA pair generation functionality
-            alert(`Generate ${count} QA pairs for:\nProject ID: ${projectId}\nSource: ${source}`);
+            const generateBtn = document.getElementById('generate-btn');
+            if (generateBtn) generateBtn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('project_id', projectId);
+            formData.append('source', source);
+            formData.append('count', String(count));
+
+            fetch('/api/projects/qa-pairs/generate', { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (generateBtn) generateBtn.disabled = false;
+                if (data.success) {
+                    loadQAPairsForSource(projectId, source); // refresh UI
+                    alert(`Generated ${data.generated} QA pairs`);
+                } else {
+                    alert('Error: ' + (data.error || 'Generation failed'));
+                }
+            })
+            .catch(err => {
+                if (generateBtn) generateBtn.disabled = false;
+                console.error(err);
+                alert('Failed to generate QA pairs');
+            });
         }
     </script>
 </section>
