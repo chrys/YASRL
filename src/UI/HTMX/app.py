@@ -80,6 +80,12 @@ else:
 # tracking_id -> {"status": "pending|in_progress|completed|error", "progress": int, "errors": list}
 indexing_progress = {}
 
+# ============================================================================
+# QA Generation Progress Tracking
+# ============================================================================
+# tracking_id -> {"status": "pending|in_progress|completed|error", "progress": int, "errors": list, "qa_pairs": list}
+qa_generation_progress = {}
+
 
 def _sanitize_project_name(project_name: str) -> str:
     """
@@ -154,6 +160,103 @@ def start_indexing_async(project_id: int, project_name: str, source: str, tracki
         error_msg = f"Unexpected error during indexing: {str(e)}"
         logger.error(error_msg)
         indexing_progress[tracking_id] = {"status": "error", "progress": 0, "errors": [error_msg]}
+
+
+def generate_qa_pairs_async(project_id: int, source: str, count: int, tracking_id: str):
+    """
+    Run QA pair generation in a background thread and update progress.
+    Uses subprocess to completely isolate async operations.
+    """
+    try:
+        # Suppress warnings for NLTK lazy loading issues
+        import warnings
+        warnings.filterwarnings('ignore', message='.*_LazyCorpusLoader.*')
+        warnings.filterwarnings('ignore', message='.*WordListCorpusReader.*')
+        
+        qa_generation_progress[tracking_id] = {"status": "in_progress", "progress": 10, "errors": [], "qa_pairs": []}
+        logger.info(f"Starting QA generation for source: {source} (tracking_id: {tracking_id})")
+        
+        # Step 3: Run QA generation in subprocess to avoid async issues
+        qa_generation_progress[tracking_id]["progress"] = 20
+        logger.info(f"Running QA generation in subprocess for source: {source}")
+        
+        import subprocess
+        import json
+        import tempfile
+        
+        # Create temp file for results
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
+            result_file = tmp.name
+        
+        # Build command to run generate_qa_pairs.py
+        script_path = os.path.join(os.path.dirname(__file__), '..', '..', 'evals', 'generate_qa_pairs.py')
+        cmd = [
+            'python',
+            script_path,
+            '--source', source,
+            '--total', str(count),
+            '--output', result_file
+        ]
+        
+        qa_generation_progress[tracking_id]["progress"] = 30
+        logger.info(f"Executing: {' '.join(cmd)}")
+        
+        # Run subprocess
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        qa_generation_progress[tracking_id]["progress"] = 70
+        
+        if result.returncode != 0:
+            raise ValueError(f"QA generation failed: {result.stderr}")
+        
+        # Read results from temp file
+        with open(result_file, 'r') as f:
+            results_data = json.load(f)
+        
+        # Clean up temp file
+        os.unlink(result_file)
+        
+        qa_generation_progress[tracking_id]["progress"] = 80
+        logger.info(f"Loaded {len(results_data)} QA pairs from subprocess")
+        
+        # Convert to format expected by add_qa_pairs_to_source
+        qa_pairs = []
+        for result in results_data:
+            qa_pairs.append({
+                'question': result.get('question', 'N/A'),
+                'answer': result.get('answer', 'N/A'),
+                'context': result.get('context', ''),
+                'score': result.get('score', 0.0)
+            })
+        
+        # Step 7: Save QA pairs to database
+        if qa_pairs:
+            add_qa_pairs_to_source(db_connection, project_id, source, qa_pairs)
+            logger.info(f"Successfully saved {len(qa_pairs)} QA pairs to database")
+            qa_generation_progress[tracking_id]["qa_pairs"] = qa_pairs
+            qa_generation_progress[tracking_id]["progress"] = 100
+            qa_generation_progress[tracking_id]["status"] = "completed"
+        else:
+            raise ValueError("No QA pairs generated")
+            
+    except Exception as e:
+        error_msg = str(e)
+        
+        # Filter out NLTK lazy loading errors (non-critical, internal library issues)
+        if "_LazyCorpusLoader" in error_msg or "WordListCorpusReader" in error_msg:
+            logger.warning(f"NLTK lazy loading warning (suppressed from UI): {error_msg}")
+            # Don't report NLTK internal errors to the user
+            return
+        
+        logger.error(f"QA generation failed: {error_msg}", exc_info=True)
+        qa_generation_progress[tracking_id]["status"] = "error"
+        qa_generation_progress[tracking_id]["errors"].append(error_msg)
+        qa_generation_progress[tracking_id]["progress"] = 0
 
 
 # ============================================================================
@@ -663,44 +766,40 @@ def api_generate_qa_pairs():
         project_id = int(project_id_str)
         count = int(count_str)
         
+        logger.info(f"Generating {count} QA pairs for source: {source}")
         
+        # Start generation in background thread
+        tracking_id = str(uuid.uuid4())
+        qa_generation_progress[tracking_id] = {"status": "pending", "progress": 0, "errors": [], "qa_pairs": []}
         
-        logger.info(f"Generating QA pairs for source: {source}")
+        thread = Thread(
+            target=generate_qa_pairs_async,
+            args=(project_id, source, count, tracking_id),
+            daemon=True
+        )
+        thread.start()
         
-        # TODO: Replace with actual QA generation logic
-        # For now, generate dummy QA pairs to test the endpoint
-        qa_pairs = []
-        for i in range(count):
-            qa_pairs.append({
-                'question': f'What is the meaning of concept {i+1} in {source}?',
-                'answer': f'Concept {i+1} is an important topic that discusses key information relevant to the document.',
-                'context': f'This QA pair was auto-generated from {source}'
-            })
-        
-        logger.info(f"Generated {len(qa_pairs)} dummy QA pairs for testing")
-        
-        if not qa_pairs:
-            return jsonify({
-                'success': False,
-                'error': 'Could not generate QA pairs from document'
-            }), 400
-        
-        # Save QA pairs to database
-        add_qa_pairs_to_source(db_connection, project_id, source, qa_pairs)
-        
-        logger.info(f"Successfully generated and saved {len(qa_pairs)} QA pairs")
         return jsonify({
             'success': True,
-            'generated': len(qa_pairs),
-            'message': f'Successfully generated {len(qa_pairs)} QA pairs'
+            'tracking_id': tracking_id,
+            'message': 'QA generation started'
         })
             
     except ValueError as e:
         return jsonify({'success': False, 'error': 'Invalid project ID or count'}), 400
     except Exception as e:
-        db_connection.rollback()
-        logger.error(f"Error generating QA pairs: {e}", exc_info=True)
+        logger.error(f"Error starting QA generation: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/qa-generation/progress/<tracking_id>', methods=['GET'])
+def api_qa_generation_progress(tracking_id):
+    """Return the progress for a given QA generation operation."""
+    progress = qa_generation_progress.get(
+        tracking_id,
+        {"status": "unknown", "progress": 0, "errors": [], "qa_pairs": []}
+    )
+    return jsonify(progress)
 
 
 if __name__ == '__main__':

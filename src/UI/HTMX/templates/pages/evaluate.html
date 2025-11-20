@@ -396,11 +396,14 @@
             return text.replace(/[&<>"']/g, m => map[m]);
         }
 
-        // Generate QA pairs
+        // Generate QA pairs with progress tracking
         function generateQAPairs(projectId, source, count) {
             console.log(`[EVALUATE] Generating ${count} QA pairs for project ${projectId}, source: ${source}`);
             const generateBtn = document.getElementById('generate-btn');
-            if (generateBtn) generateBtn.disabled = true;
+            if (generateBtn) {
+                generateBtn.disabled = true;
+                generateBtn.textContent = 'Generating...';
+            }
 
             const formData = new FormData();
             formData.append('project_id', projectId);
@@ -410,19 +413,73 @@
             fetch('/api/projects/qa-pairs/generate', { method: 'POST', body: formData })
             .then(response => response.json())
             .then(data => {
-                if (generateBtn) generateBtn.disabled = false;
-                if (data.success) {
-                    loadQAPairsForSource(projectId, source); // refresh UI
-                    alert(`Generated ${data.generated} QA pairs`);
+                if (data.success && data.tracking_id) {
+                    // Start polling for progress
+                    pollQAGenerationProgress(data.tracking_id, projectId, source, generateBtn);
                 } else {
+                    if (generateBtn) {
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = 'Generate';
+                    }
                     alert('Error: ' + (data.error || 'Generation failed'));
                 }
             })
             .catch(err => {
-                if (generateBtn) generateBtn.disabled = false;
+                if (generateBtn) {
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = 'Generate';
+                }
                 console.error(err);
-                alert('Failed to generate QA pairs');
+                alert('Failed to start QA generation');
             });
+        }
+
+        // Poll for QA generation progress
+        function pollQAGenerationProgress(trackingId, projectId, source, generateBtn) {
+            const pollInterval = setInterval(() => {
+                fetch(`/api/qa-generation/progress/${trackingId}`)
+                .then(response => response.json())
+                .then(progress => {
+                    console.log(`[EVALUATE] QA generation progress: ${progress.progress}% (${progress.status})`);
+                    
+                    // Update button text with progress
+                    if (generateBtn) {
+                        generateBtn.textContent = `Generating... ${progress.progress}%`;
+                    }
+                    
+                    if (progress.status === 'completed') {
+                        clearInterval(pollInterval);
+                        if (generateBtn) {
+                            generateBtn.disabled = false;
+                            generateBtn.textContent = 'Generate';
+                        }
+                        
+                        // Refresh QA pairs display
+                        loadQAPairsForSource(projectId, source);
+                        
+                        const generated = progress.qa_pairs ? progress.qa_pairs.length : 0;
+                        alert(`Successfully generated ${generated} QA pairs!`);
+                        
+                    } else if (progress.status === 'error') {
+                        clearInterval(pollInterval);
+                        if (generateBtn) {
+                            generateBtn.disabled = false;
+                            generateBtn.textContent = 'Generate';
+                        }
+                        
+                        const errors = progress.errors.join(', ');
+                        alert('Error generating QA pairs: ' + errors);
+                    }
+                })
+                .catch(err => {
+                    console.error('Error polling progress:', err);
+                    clearInterval(pollInterval);
+                    if (generateBtn) {
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = 'Generate';
+                    }
+                });
+            }, 2000); // Poll every 2 seconds
         }
     </script>
 </section>
