@@ -6,6 +6,8 @@ import importlib.util
 from threading import Thread
 import uuid
 import nest_asyncio
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 
 # Apply nest_asyncio to allow nested event loops
 nest_asyncio.apply()
@@ -53,6 +55,8 @@ else:
 app = Flask(__name__, 
             template_folder=os.path.join(os.path.dirname(__file__), 'templates'),
             static_folder=os.path.join(os.path.dirname(__file__), 'static'))
+
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
