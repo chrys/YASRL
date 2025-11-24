@@ -10,67 +10,69 @@ authors = [{ name = "chrys", email = "zampas@gmail.com" }]
 license = { text = "MIT" }
 requires-python = ">=3.8"
 dependencies = [
+    # Core LlamaIndex RAG
     "llama-index-core",
-    "llama-index-readers-web",
     "llama-index-readers-file",
     "llama-index-vector-stores-postgres",
-    "llama-index-embeddings-gemini",
+    
+    # Gemini LLM & Embeddings
     "llama-index-llms-gemini",
-    "llama-index-llms-google-genai",
-    "llama-index-embeddings-google-genai",
-    "llama-index-question-gen-openai",
-    "asyncio",
-    "dataclasses; python_version<'3.10'",
-    "logging",
+    "llama-index-embeddings-gemini",
+    
+    # Config & utilities
     "python-dotenv",
     "pyyaml",
-    "pytest-asyncio", 
-    "numpy",
+    "ruff",
+    
+    # Web frameworks
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
+    "flask",
+    
+    # Data processing
     "pydantic>=2.0.0",
-    "sentence-transformers", 
+    "numpy",
+    "markitdown[all]",
+    
+    # Evaluation
     "deepeval", 
     "google-generativeai",
-    "ragas",
-    "langchain-google-genai", 
-    "sacrebleu",
-    "markitdown[all]",
-    "flask",
-    "pytest-playwright",
-    "google-genai",
-    "spacy",
-    "ruff", 
+    
+    # Database
+    "psycopg2-binary",
+    "pgvector",
 ]
 
 [project.optional-dependencies]
+# Alternative LLM providers (install only if needed)
 openai = [
     "openai",
     "llama-index-llms-openai",
     "llama-index-embeddings-openai"
 ]
-gemini = [
-    "google-generativeai",
-    "llama-index-llms-gemini",
-    "llama-index-embeddings-gemini"
-]
 ollama = [
     "llama-index-llms-ollama"
 ]
-postgres = [
-    "pgvector",
-    "psycopg2-binary",
-    "llama-index-vector-stores-pgvector"
+
+# Heavy evaluation libraries (install only if needed for evaluation)
+evaluation = [
+    "ragas",
+    "sentence-transformers",
+    "sacrebleu",
+    "langchain-google-genai",
 ]
+
+# Development & testing
 dev = [
     "black",
     "flake8",
-    "mypy"
-]
-test = [
+    "mypy",
     "pytest",
-    "pytest-mock"
+    "pytest-mock",
+    "pytest-asyncio",
+    "pytest-playwright",
 ]
+
 docs = [
     "sphinx",
     "sphinx-rtd-theme"
