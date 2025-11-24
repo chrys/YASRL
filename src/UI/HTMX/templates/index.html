@@ -15,8 +15,8 @@
             <div class="nav-brand">Chatbot Demo</div>
             <ul class="nav-menu">
                 <li>
-                    <a href="/page/admin" 
-                       hx-get="/page/admin" 
+                    <a href="{{ url_for('admin_page') }}" 
+                       hx-get="{{ url_for('admin_page') }}" 
                        hx-target="#page-content" 
                        hx-push-url="true"
                        class="nav-link">
@@ -24,8 +24,8 @@
                     </a>
                 </li>
                 <li>
-                    <a href="/page/chat" 
-                       hx-get="/page/chat" 
+                    <a href="{{ url_for('chat_page') }}" 
+                       hx-get="{{ url_for('chat_page') }}" 
                        hx-target="#page-content" 
                        hx-push-url="true"
                        class="nav-link">
@@ -33,8 +33,8 @@
                     </a>
                 </li>
                 <li>
-                    <a href="/page/evaluate" 
-                       hx-get="/page/evaluate" 
+                    <a href="{{ url_for('evaluate_page') }}" 
+                       hx-get="{{ url_for('evaluate_page') }}" 
                        hx-target="#page-content" 
                        hx-push-url="true"
                        class="nav-link">
