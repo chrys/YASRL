@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chatbot Demo</title>
     <script src="https://unpkg.com/htmx.org"></script>
+    <script>
+        // Configure HTMX to use the correct base URL based on SCRIPT_NAME
+        document.addEventListener('htmx:configRequest', function(event) {
+            // Get the current script name (set by ProxyFix) from the path
+            const pathArray = window.location.pathname.split('/').filter(Boolean);
+            // If we have a prefix like 'my_chatbot2', use it
+            if (pathArray.length > 0 && pathArray[0] === 'my_chatbot2') {
+                const prefix = '/' + pathArray[0];
+                // Prepend prefix to API calls
+                if (event.detail.path.startsWith('/api/') || event.detail.path.startsWith('/page/')) {
+                    event.detail.path = prefix + event.detail.path;
+                }
+            }
+        });
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/indexing.css') }}">
 </head>
