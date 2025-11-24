@@ -209,3 +209,6 @@ tests/contract/
 tests/integration/
 uploads/
 .DS_Store
+config_files/fasolaki.com
+config_files/fetch_files.sh
+config_files/yasrl-ui.service
