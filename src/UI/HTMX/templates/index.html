@@ -47,13 +47,20 @@
         <!-- Page Content -->
         <main id="page-content" class="page-content">
             <div class="welcome">
-                <h1>Welcome to Chatbot Demo</h1>
-                <p>Select a page from the navigation above to get started.</p>
+                <h1>Loading...</h1>
             </div>
         </main>
     </div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/indexing.js') }}"></script>
-</body>
-</html>
+    
+    <!-- Load admin page by default -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            htmx.ajax('GET', "{{ url_for('admin_page') }}", {
+                target: '#page-content',
+                swap: 'innerHTML'
+            });
+        });
+    </script>

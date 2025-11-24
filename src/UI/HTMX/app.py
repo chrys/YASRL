@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'evals'))
 # Import QA generation functions
 #from evals.generate_qa_pairs import *
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify
 from dotenv import load_dotenv
 
 # Load environment variables first
@@ -412,8 +412,8 @@ def api_chat_send():
 
 @app.route('/')
 def index():
-    """Main entry point - redirect to admin page."""
-    return redirect(url_for('admin_page'))
+    """Main entry point - loads the SPA container."""
+    return render_template('index.html')
 
 
 @app.route('/page/admin')
