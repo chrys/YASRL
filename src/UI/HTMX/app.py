@@ -453,6 +453,7 @@ def api_get_projects():
 def api_create_project():
     """Create a new project."""
     if not db_connection:
+        logger.error("Database not connected")
         return render_template('components/projects_list.html', projects=[], error="Database not connected"), 400
     
     try:
@@ -464,19 +465,25 @@ def api_create_project():
             'sources': []
         }
         
+        logger.info(f"Creating project with data: {project_data}")
+        
         if not project_data['name']:
+            logger.warning("Project name is required")
             return render_template('components/projects_list.html', projects=[], error="Project name is required"), 400
         
         success = save_single_project(db_connection, project_data)
+        logger.info(f"save_single_project returned: {success}")
         
         if success:
             projects_df = get_projects(db_connection)
             projects = projects_df.to_dict('records') if len(projects_df) > 0 else []
+            logger.info(f"Retrieved {len(projects)} projects after creation")
             return render_template('components/projects_list.html', projects=projects, error=None)
         else:
+            logger.error("save_single_project returned False")
             return render_template('components/projects_list.html', projects=[], error="Failed to create project"), 400
     except Exception as e:
-        logger.error(f"Error creating project: {e}")
+        logger.error(f"Error creating project: {e}", exc_info=True)
         return render_template('components/projects_list.html', projects=[], error=str(e)), 400
 
 

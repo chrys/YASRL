@@ -20,7 +20,7 @@
                 <!-- Create New Project -->
                 <div class="card">
                     <h2>Create New Project</h2>
-                    <form id="create-project-form" hx-post="/api/projects/create" hx-target="#projects-container" hx-swap="innerHTML">
+                    <form id="create-project-form" method="POST" hx-post="/api/projects/create" hx-target="#projects-container" hx-swap="innerHTML" hx-on::after-request="clearFormOnSuccess(event)">
                         <div class="form-group">
                             <label for="project-name">Project Name *</label>
                             <input type="text" id="project-name" name="name" required placeholder="e.g., My RAG Project">
@@ -70,6 +70,26 @@
 
     <!-- Load projects on page initialization -->
     <script>
+        // Clear form after successful project creation
+        function clearFormOnSuccess(event) {
+            // Only clear if request was successful (status 200)
+            if (event.detail.xhr.status === 200) {
+                console.log('[admin] Project created successfully, clearing form');
+                document.getElementById('create-project-form').reset();
+            }
+        }
+
+        // Ensure form submits via HTMX, not default browser behavior
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('create-project-form');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    console.log('[admin] Form submit event intercepted');
+                    // Let HTMX handle it - don't prevent default
+                });
+            }
+        });
+
         // These functions are page-specific and not in global scope
         function loadProjects() {
             const container = document.getElementById('projects-container');

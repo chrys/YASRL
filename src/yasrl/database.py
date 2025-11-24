@@ -13,6 +13,9 @@ def get_db_connection(postgres_uri: str) -> connection:
     """
     try:
         conn = psycopg2.connect(postgres_uri)
+        # Ensure autocommit is OFF so we control transactions
+        conn.autocommit = False
+        logger.info("Database connection established")
         return conn
     except psycopg2.Error as e:
         logger.error(f"Failed to connect to the database: {e}")
@@ -236,45 +239,58 @@ def save_single_project(conn: connection, project_data: dict) -> bool:
     Save a single project to the database using upsert.
     Returns True if successful, False otherwise.
     """
-    upsert_query = """
-        INSERT INTO projects (name, description, sources, embed_model, llm, created_at)
-        VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-        ON CONFLICT (name) DO UPDATE SET
-            description = EXCLUDED.description,
-            sources = EXCLUDED.sources,
-            embed_model = EXCLUDED.embed_model,
-            llm = EXCLUDED.llm,
-            created_at = CURRENT_TIMESTAMP
-        RETURNING id;
-    """
-    
     try:
+        name = str(project_data['name']).strip()
+        description = str(project_data.get('description', '')).strip()
+        embed_model = str(project_data['embed_model']).strip()
+        llm = str(project_data['llm']).strip()
+        sources = json.dumps(project_data.get('sources', []))
+        
+        logger.info(f"Saving project: name={name}, llm={llm}, embed_model={embed_model}")
+        
         with conn.cursor() as cursor:
-            # Convert sources to JSON string if it's not already
-            sources_json = json.dumps(project_data['sources']) if isinstance(project_data['sources'], list) else project_data['sources']
+            # First check if project exists
+            cursor.execute("SELECT id FROM projects WHERE name = %s", (name,))
+            existing = cursor.fetchone()
             
-            cursor.execute(upsert_query, (
-                str(project_data['name']),
-                str(project_data.get('description', '')),
-                sources_json,
-                str(project_data['embed_model']),
-                str(project_data['llm'])
-            ))
+            if existing:
+                # Update existing project
+                logger.info(f"Project '{name}' exists, updating...")
+                cursor.execute("""
+                    UPDATE projects 
+                    SET description = %s, sources = %s, embed_model = %s, llm = %s
+                    WHERE name = %s
+                    RETURNING id
+                """, (description, sources, embed_model, llm, name))
+            else:
+                # Insert new project
+                logger.info(f"Project '{name}' is new, inserting...")
+                cursor.execute("""
+                    INSERT INTO projects (name, description, sources, embed_model, llm, created_at)
+                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    RETURNING id
+                """, (name, description, sources, embed_model, llm))
             
             result = cursor.fetchone()
+            
+            # Commit the transaction
             conn.commit()
             
             if result:
                 project_id = result[0]
-                logger.info(f"Successfully saved project '{project_data['name']}' with ID {project_id}")
+                logger.info(f"✓ Successfully saved project '{name}' with ID {project_id}")
                 return True
             else:
-                logger.error(f"Failed to get project ID after saving '{project_data['name']}'")
+                logger.error(f"✗ Failed to get project ID for '{name}'")
+                conn.rollback()
                 return False
                 
     except Exception as e:
-        conn.rollback()
-        logger.error(f"Failed to save project '{project_data['name']}': {e}")
+        logger.error(f"✗ Failed to save project: {e}", exc_info=True)
+        try:
+            conn.rollback()
+        except:
+            pass
         return False
 
 def delete_project_by_name(conn: connection, name: str) -> bool:

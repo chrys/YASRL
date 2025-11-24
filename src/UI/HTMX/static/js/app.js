@@ -40,6 +40,10 @@ function loadPage(url, event) {
             }
             contentDiv.innerHTML = html;
             
+            // IMPORTANT: Process HTMX attributes in the newly loaded HTML
+            console.log('[APP] Processing HTMX attributes...');
+            htmx.process(contentDiv);
+            
             // Update active link
             updateActiveLink(url);
             

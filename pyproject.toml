@@ -40,6 +40,7 @@ dependencies = [
     "pytest-playwright",
     "google-genai",
     "spacy",
+    "ruff", 
 ]
 
 [project.optional-dependencies]
