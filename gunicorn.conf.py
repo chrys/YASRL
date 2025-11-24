@@ -27,8 +27,10 @@ daemon = False
 user = "deploy"
 group = "www-data"
 
-# PID file
+# PID file - only used for FastAPI/uvicorn worker
 pidfile = "/run/yasrl-api/yasrl-api.pid"
+
+# Note: This config is for API only. Flask UI uses its own systemd service without pidfile.
 
 # Preload application
 preload_app = True

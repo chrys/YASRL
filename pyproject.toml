@@ -13,6 +13,7 @@ dependencies = [
     # Core LlamaIndex RAG
     "llama-index-core",
     "llama-index-readers-file",
+    "llama-index-readers-web",
     "llama-index-vector-stores-postgres",
     
     # Gemini LLM & Embeddings
@@ -28,6 +29,7 @@ dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
     "flask",
+    "gunicorn",
     
     # Data processing
     "pydantic>=2.0.0",
