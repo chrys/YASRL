@@ -27,10 +27,8 @@ daemon = False
 user = "deploy"
 group = "www-data"
 
-# PID file - only used for FastAPI/uvicorn worker
-pidfile = "/run/yasrl-api/yasrl-api.pid"
-
-# Note: This config is for API only. Flask UI uses its own systemd service without pidfile.
+# NOTE: PID file is disabled - systemd manages process lifecycle
+# pidfile = None
 
 # Preload application
 preload_app = True
@@ -39,11 +37,11 @@ preload_app = True
 chdir = "/srv/library2"
 
 # Python path
-pythonpath = "/srv/library2/src"
+pythonpath = "/srv/library2"
 
 # Environment variables
 raw_env = [
-    "PYTHONPATH=/srv/library2/src",
+    "PYTHONPATH=/srv/library2",
 ]
 
 # Logging - send to stdout/stderr for journald
