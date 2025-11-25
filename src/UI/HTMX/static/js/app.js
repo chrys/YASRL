@@ -10,8 +10,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function initializeApp() {
     console.log('[APP] Initializing app...');
-    // Load admin page by default
-    loadPage('/page/admin', null);
+    // Load admin page by default (use relative URL)
+    loadPage('page/admin', null);
 }
 
 /**
@@ -173,9 +173,9 @@ function uploadSourceAndIndex(projectId, formData) {
         if (progressText) progressText.textContent = '0%';
         if (indexingStatus) indexingStatus.textContent = 'Adding source...';
         
-        console.log(`[uploadSourceAndIndex] Sending request to /api/projects/sources/add`);
+        console.log(`[uploadSourceAndIndex] Sending request to api/projects/sources/add`);
         
-        fetch('/api/projects/sources/add', { method: 'POST', body: formData })
+        fetch('api/projects/sources/add', { method: 'POST', body: formData })
             .then(response => {
                 console.log(`[uploadSourceAndIndex] Response received:`, response.status);
                 return response.json();
@@ -362,7 +362,7 @@ function removeSource(projectId, source) {
         formData.append('project_id', projectId);
         formData.append('source', source);
         
-        fetch('/api/projects/sources/remove', { method: 'POST', body: formData })
+        fetch('api/projects/sources/remove', { method: 'POST', body: formData })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {

@@ -1,0 +1,50 @@
+[Unit]
+Description=YASRL UI Application (Flask)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=notify
+User=deploy
+Group=www-data
+RuntimeDirectory=yasrl-ui
+RuntimeDirectoryMode=755
+WorkingDirectory=/srv/library2
+Environment=PATH=/srv/library2/venv/bin
+Environment=PYTHONPATH=/srv/library2
+Environment=FLASK_ENV=production
+EnvironmentFile=/srv/library2/.env
+
+ExecStart=/srv/library2/venv/bin/gunicorn \
+  --workers 4 \
+  --worker-class sync \
+  --bind unix:/run/yasrl-ui/yasrl-ui.sock \
+  --timeout 300 \
+  --access-logfile /var/log/yasrl/yasrl-ui-access.log \
+  --error-logfile /var/log/yasrl/yasrl-ui-error.log \
+  --chdir /srv/library2 \
+  'src.UI.HTMX.app:app'
+
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=30
+PrivateTmp=true
+Restart=on-failure
+RestartSec=10
+
+# Security settings
+NoNewPrivileges=yes
+ProtectSystem=yes
+ProtectHome=yes
+ReadWritePaths=/srv/library2 /run/yasrl-ui /tmp /var/log/yasrl
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target
+
