@@ -1,5 +1,4 @@
-<div id="indexing-{{ tracking_id }}" hx-ext="sse"
-    sse-connect="{{ request.url_for('progress_stream', tracking_id=tracking_id) }}"
+<div id="indexing-{{ tracking_id }}" hx-ext="sse" sse-connect="../indexing/progress/{{ tracking_id }}"
     class="mt-4 p-4 border rounded bg-gray-50">
     <div class="mb-2 font-medium">Indexing: {{ source }}</div>
     <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">

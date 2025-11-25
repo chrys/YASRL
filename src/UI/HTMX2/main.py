@@ -12,6 +12,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import sys
+# Add project root and src to sys.path to allow imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+if os.path.join(project_root, "src") not in sys.path:
+    sys.path.append(os.path.join(project_root, "src"))
+
 from src.API.crud import PipelineService
 from yasrl.database import get_db_connection
 from yasrl.pipeline import RAGPipeline

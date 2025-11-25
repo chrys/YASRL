@@ -23,7 +23,7 @@
         <div class="text-center text-gray-500 text-sm">Select a project and start chatting!</div>
     </div>
 
-    <form id="chat-form" hx-post="{{ request.url_for('chat_message') }}" hx-target="#chat-history" hx-swap="beforeend"
+    <form id="chat-form" hx-post="../chat/message" hx-target="#chat-history" hx-swap="beforeend"
         hx-indicator="#loading-indicator" class="flex gap-2">
         <input type="hidden" name="project_name" id="project_name_input">
         <input type="text" name="message" id="message_input"

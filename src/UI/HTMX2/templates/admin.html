@@ -6,8 +6,7 @@
 
     <div class="mb-8">
         <h2 class="text-lg font-medium mb-4">Create New Project</h2>
-        <form hx-post="{{ request.url_for('create_pipeline') }}" hx-target="#project-list" hx-swap="innerHTML"
-            class="space-y-4">
+        <form hx-post="../pipelines" hx-target="#project-list" hx-swap="innerHTML" class="space-y-4">
             <div>
                 <label for="name" class="block text-sm font-medium text-gray-700">Project Name</label>
                 <input type="text" name="name" id="name"
@@ -36,8 +35,8 @@
     <div>
         <h2 class="text-lg font-medium mb-4">Add Source to Project</h2>
         {% if projects %}
-        <form hx-post="{{ request.url_for('add_source', project_name=projects[0].name) }}" hx-target="#indexing-area"
-            hx-swap="innerHTML" class="space-y-4 mb-8" id="add-source-form">
+        <form hx-post="../projects/{{ projects[0].name }}/sources" hx-target="#indexing-area" hx-swap="innerHTML"
+            class="space-y-4 mb-8" id="add-source-form">
             <!-- Ideally this dropdown should be dynamic or context aware. For now, let's just pick the first one or add a selector -->
             <div>
                 <label for="project_select" class="block text-sm font-medium text-gray-700">Select Project</label>
@@ -66,24 +65,11 @@
             // Update form action when project is selected
             document.getElementById('project_select').addEventListener('change', function (e) {
                 const projectName = e.target.value;
-                // We need to construct the URL dynamically. 
-                // Since we can't easily use url_for in JS for a specific parameter without exposing the pattern,
-                // we'll rely on the fact that we know the structure or pass a base URL.
-                // A safer way with HTMX is to use a hidden input and have the backend handle it, 
-                // but since we are keeping the backend as is, we'll try to replace the project name in the action.
-
                 const form = document.getElementById('add-source-form');
-                const currentAction = form.getAttribute('hx-post');
-                // Assuming the URL structure is .../projects/{name}/sources
-                // We can find the current project name in the URL and replace it.
-                // But this is brittle.
-
-                // Better approach: Let's just hardcode the path structure here since we are fixing the immediate issue.
-                // Or better, let's just leave it as is for now (pointing to first project) but warn the user 
-                // or fix the backend to accept project_name in body.
-
-                // For now, I will NOT add complex JS to fix the dropdown logic as it wasn't requested,
-                // but I WILL add the {% endif %} to prevent crashes.
+                // Update the action attribute to point to the selected project
+                // We use relative path: ../projects/{name}/sources
+                form.setAttribute('hx-post', '../projects/' + encodeURIComponent(projectName) + '/sources');
+                htmx.process(form);
             });
         </script>
         {% else %}
