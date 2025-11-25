@@ -8,7 +8,8 @@ from typing import Dict, List, Optional
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from .crud import PipelineService
@@ -16,6 +17,28 @@ from yasrl.models import QueryResult
 from yasrl.exceptions import ConfigurationError, IndexingError, RetrievalError
 
 logger = logging.getLogger(__name__)
+
+# API Key Authentication
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+def get_api_key(api_key: str = Security(api_key_header)) -> str:
+    """Validate API key from request header."""
+    # Get API key from environment variable
+    valid_api_key = os.getenv("API_KEY")
+    
+    # If no API key is set in environment, allow all requests (development mode)
+    if not valid_api_key:
+        logger.warning("API_KEY not set in environment - authentication disabled!")
+        return "dev-mode"
+    
+    # Validate the API key
+    if api_key != valid_api_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid or missing API key"
+        )
+    return api_key
 
 # Global service instance
 pipeline_service = PipelineService()
@@ -76,7 +99,7 @@ app = FastAPI(
 )
 
 @app.post("/pipelines", response_model=PipelineCreateResponse)
-async def create_pipeline(request: PipelineCreateRequest):
+async def create_pipeline(request: PipelineCreateRequest, api_key: str = Depends(get_api_key)):
     """
     Create a new RAG pipeline.
     
@@ -102,7 +125,7 @@ async def create_pipeline(request: PipelineCreateRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/pipelines/{pipeline_id}/index", response_model=IndexResponse)
-async def index_documents(pipeline_id: str, request: IndexRequest):
+async def index_documents(pipeline_id: str, request: IndexRequest, api_key: str = Depends(get_api_key)):
     """
     Index documents in a pipeline.
     
@@ -125,7 +148,7 @@ async def index_documents(pipeline_id: str, request: IndexRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.post("/pipelines/{pipeline_id}/ask", response_model=QueryResponse)
-async def ask_question(pipeline_id: str, request: QueryRequest):
+async def ask_question(pipeline_id: str, request: QueryRequest, api_key: str = Depends(get_api_key)):
     """
     Ask a question to the RAG pipeline.
     
@@ -200,7 +223,7 @@ async def check_pipeline_health(pipeline_id: str):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.delete("/pipelines/{pipeline_id}")
-async def delete_pipeline(pipeline_id: str):
+async def delete_pipeline(pipeline_id: str, api_key: str = Depends(get_api_key)):
     """
     Delete a pipeline and clean up its resources.
     
@@ -247,4 +270,108 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)# Project-based API endpoints
+import os
+from yasrl.database import get_db_connection, get_project_by_name
+from yasrl.vector_store import VectorStoreManager
+from yasrl.pipeline import RAGPipeline
+
+# Add these to src/API/api.py after the existing endpoints
+
+@app.get("/projects")
+async def list_projects():
+    """List all projects from the database."""
+    try:
+        projects = pipeline_service.list_projects_from_db()
+        return {
+            "projects": projects,
+            "count": len(projects)
+        }
+    except Exception as e:
+        logger.error(f"Error listing projects: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/projects/{project_name}")
+async def get_project(project_name: str):
+    """Get details of a specific project."""
+    try:
+        postgres_uri = os.getenv("POSTGRES_URI")
+        if not postgres_uri:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        conn = get_db_connection(postgres_uri)
+        try:
+            df = get_project_by_name(conn, project_name)
+            if df.empty:
+                raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found")
+            
+            project = df.iloc[0].to_dict()
+            sources = pipeline_service.get_project_sources_from_db(project_name)
+            project['sources'] = sources
+            
+            return project
+        finally:
+            conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting project: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/projects/{project_name}/ask")
+async def ask_project(project_name: str, request: QueryRequest, api_key: str = Depends(get_api_key)):
+    """Ask a question to a specific project."""
+    try:
+        postgres_uri = os.getenv("POSTGRES_URI")
+        if not postgres_uri:
+            raise HTTPException(status_code=500, detail="Database not configured")
+        
+        conn = get_db_connection(postgres_uri)
+        try:
+            df = get_project_by_name(conn, project_name)
+            if df.empty:
+                raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found")
+            
+            project = df.iloc[0]
+            llm = project['llm']
+            embed_model = project['embed_model']
+        finally:
+            conn.close()
+        
+        # Initialize pipeline
+        sanitized_name = "".join(c.lower() if c.isalnum() else "_" for c in project_name)
+        table_prefix = f"yasrl_{sanitized_name}"
+        
+        db_manager = VectorStoreManager(
+            postgres_uri=postgres_uri,
+            vector_dimensions=768,
+            table_prefix=table_prefix
+        )
+        
+        pipeline = await RAGPipeline.create(
+            llm=llm,
+            embed_model=embed_model,
+            db_manager=db_manager
+        )
+        
+        result = await pipeline.ask(
+            query=request.query,
+            conversation_history=request.conversation_history
+        )
+        
+        return QueryResponse(
+            answer=result.answer,
+            source_chunks=[
+                {
+                    "text": chunk.text,
+                    "metadata": chunk.metadata,
+                    "score": float(chunk.score)  # Convert numpy.float32 to Python float
+                }
+                for chunk in result.source_chunks
+            ]
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error querying project: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
