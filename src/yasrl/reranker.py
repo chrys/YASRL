@@ -1,14 +1,23 @@
 import logging
-from typing import List
-from llama_index.core.postprocessor import SentenceTransformerRerank
-from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
+from typing import List, Optional
 from .models import SourceChunk
+
+# Try to import reranker dependencies - make them optional
+try:
+    from llama_index.core.postprocessor import SentenceTransformerRerank
+    from llama_index.core.schema import NodeWithScore, QueryBundle, TextNode
+    RERANKER_AVAILABLE = True
+except ImportError:
+    RERANKER_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning("sentence-transformers not available - reranking will be skipped")
 
 logger = logging.getLogger(__name__)
 
 class ReRanker:
     """
     A wrapper around a cross-encoder model to re-rank and filter source chunks.
+    Falls back to returning top_n chunks without reranking if dependencies unavailable.
     """
     def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2", top_n: int = 2):
         """
@@ -18,12 +27,19 @@ class ReRanker:
             model_name: The name of the cross-encoder model to use.
             top_n: The number of top chunks to keep after re-ranking.
         """
-        logger.info(f"Initializing ReRanker with model: {model_name} and top_n: {top_n}")
-        self._reranker = SentenceTransformerRerank(top_n=top_n, model=model_name)
+        self.top_n = top_n
+        self._reranker: Optional[SentenceTransformerRerank] = None
+        
+        if RERANKER_AVAILABLE:
+            logger.info(f"Initializing ReRanker with model: {model_name} and top_n: {top_n}")
+            self._reranker = SentenceTransformerRerank(top_n=top_n, model=model_name)
+        else:
+            logger.warning(f"ReRanker initialized in fallback mode (no reranking) - will return top {top_n} chunks by score")
 
     def rerank(self, query: str, chunks: List[SourceChunk]) -> List[SourceChunk]:
         """
         Re-ranks a list of SourceChunk objects based on a query.
+        Falls back to simple score-based filtering if reranker unavailable.
 
         Args:
             query: The user's query string.
@@ -34,6 +50,13 @@ class ReRanker:
         """
         if not chunks:
             return []
+
+        # Fallback mode: just return top_n chunks by score
+        if not RERANKER_AVAILABLE or self._reranker is None:
+            sorted_chunks = sorted(chunks, key=lambda x: x.score, reverse=True)
+            result = sorted_chunks[:self.top_n]
+            logger.info(f"Fallback mode: returning top {len(result)} of {len(chunks)} chunks by score")
+            return result
 
         # Convert our SourceChunk objects into the format LlamaIndex's reranker expects
         nodes_to_rerank = [
