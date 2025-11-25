@@ -115,6 +115,7 @@ class PipelineService:
     def delete_project_from_db(self, project_name: str) -> bool:
         """
         Deletes a project from the database by name.
+        Also drops the associated embedding and metadata tables.
         """
         postgres_uri = os.getenv("POSTGRES_URI")
         if not postgres_uri:
@@ -125,6 +126,26 @@ class PipelineService:
             conn = get_db_connection(postgres_uri)
             try:
                 from yasrl.database import delete_project_by_name
+                
+                # Drop the embedding and metadata tables for this project
+                sanitized_name = "".join(c.lower() if c.isalnum() else "_" for c in project_name)
+                embeddings_table = f"yasrl_{sanitized_name}_embeddings"
+                metadata_table = f"yasrl_{sanitized_name}_metadata"
+                
+                cursor = conn.cursor()
+                try:
+                    # Drop tables if they exist
+                    cursor.execute(f"DROP TABLE IF EXISTS {embeddings_table} CASCADE")
+                    cursor.execute(f"DROP TABLE IF EXISTS {metadata_table} CASCADE")
+                    conn.commit()
+                    logger.info(f"Dropped tables {embeddings_table} and {metadata_table}")
+                except Exception as e:
+                    logger.warning(f"Error dropping tables for project {project_name}: {e}")
+                    conn.rollback()
+                finally:
+                    cursor.close()
+                
+                # Delete the project record
                 return delete_project_by_name(conn, project_name)
             finally:
                 conn.close()
