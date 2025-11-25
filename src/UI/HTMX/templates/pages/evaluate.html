@@ -92,22 +92,38 @@
             return path;
         });
 
+        let evaluatePageInitialized = false; // Flag to prevent re-initialization
+
         function initializeEvaluatePage() {
+            // Only initialize once to avoid resetting the dropdowns
+            if (evaluatePageInitialized) {
+                console.log('[EVALUATE] Page already initialized, skipping...');
+                return;
+            }
+            
+            evaluatePageInitialized = true;
             loadProjectsForEvaluation();
             setupEvaluateListeners();
             console.log('[EVALUATE] Page initialized, basePath:', getBasePath());
         }
 
         // Load projects on page load (both initial and HTMX dynamic load)
-        document.addEventListener('DOMContentLoaded', initializeEvaluatePage);
-        document.addEventListener('htmx:load', initializeEvaluatePage);
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeEvaluatePage);
+            } else {
+                initializeEvaluatePage();
+            }
+        });
         
-        // Also trigger immediately in case already loaded
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeEvaluatePage);
-        } else {
-            initializeEvaluatePage();
-        }
+        // Also initialize when HTMX loads the page
+        document.addEventListener('pageLoaded', function(e) {
+            if (e.detail && e.detail.url && e.detail.url.includes('/evaluate')) {
+                // Reset flag when returning to evaluate page
+                evaluatePageInitialized = false;
+                initializeEvaluatePage();
+            }
+        });
 
         // Load projects from database
         function loadProjectsForEvaluation() {

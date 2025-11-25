@@ -53,24 +53,39 @@
     let chatHistory = [];
     let currentProjectId = null;
     let isProcessing = false;
+    let chatPageInitialized = false; // Flag to prevent re-initialization
 
     function initializeChatPage() {
+        // Only initialize once to avoid resetting the dropdown
+        if (chatPageInitialized) {
+            console.log('[CHAT] Page already initialized, skipping...');
+            return;
+        }
+        
+        chatPageInitialized = true;
         loadProjectsForChat();
         setupChatListeners();
         console.log('[CHAT] Page initialized, basePath:', getBasePath());
     }
 
     // Load projects on page load (both initial and HTMX dynamic load)
-    document.addEventListener('DOMContentLoaded', initializeChatPage);
-    document.addEventListener('htmx:load', initializeChatPage);
-    document.addEventListener('pageLoaded', initializeChatPage);
+    // Use a single approach: DOMContentLoaded for initial load
+    document.addEventListener('DOMContentLoaded', function() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeChatPage);
+        } else {
+            initializeChatPage();
+        }
+    });
     
-    // Also trigger immediately in case already loaded
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initializeChatPage);
-    } else {
-        initializeChatPage();
-    }
+    // Also initialize when HTMX loads the page
+    document.addEventListener('pageLoaded', function(e) {
+        if (e.detail && e.detail.url && e.detail.url.includes('/chat')) {
+            // Reset flag when returning to chat page
+            chatPageInitialized = false;
+            initializeChatPage();
+        }
+    });
 
     // Load projects from database
     function loadProjectsForChat() {
