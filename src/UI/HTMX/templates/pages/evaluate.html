@@ -147,8 +147,8 @@
                     } else {
                         noProjectsMsg.style.display = 'none';
                         projectItems.forEach(item => {
-                            const projectName = item.textContent.trim().split('\n')[0];
-                            const projectId = item.getAttribute('onclick')?.match(/\d+/)?.[0];
+                            const projectName = item.querySelector('.project-name')?.textContent.trim() || 'Unknown';
+                            const projectId = item.getAttribute('data-project-id');
                             
                             if (projectId && projectName) {
                                 const option = document.createElement('option');

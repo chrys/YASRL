@@ -5,7 +5,7 @@
 {% elif projects %}
     <div class="projects-list">
         {% for project in projects %}
-            <div class="project-item" onclick="selectProject({{ project.id }})">
+            <div class="project-item" data-project-id="{{ project.id }}" onclick="selectProject({{ project.id }})">
                 <div class="project-name">{{ project.name }}</div>
                 <div class="project-meta">
                     <span class="badge badge-llm">{{ project.llm }}</span>
