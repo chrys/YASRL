@@ -152,6 +152,52 @@ class OpenSourceEmbeddingProvider(EmbeddingProvider):
     def get_max_chunk_size(self) -> int:
         return self.CHUNK_SIZE
 
+class JinaEmbeddingProvider(EmbeddingProvider):
+    """
+    Jina AI embedding provider using REST API - no torch/sentence-transformers needed!
+    Free tier: 1M tokens/month
+    """
+    CHUNK_SIZE = 8192  # Jina supports very large chunks
+    DEFAULT_MODEL = "jina-embeddings-v2-base-en"
+    
+    def __init__(self, config):
+        self.config = config
+        self.validate_config()
+    
+    def get_embedding_model(self) -> Any:
+        """Returns a Jina embedding model using REST API."""
+        try:
+            from llama_index.embeddings.jinaai import JinaEmbedding
+        except ImportError:
+            raise ConfigurationError(
+                "JinaEmbedding not available. Please install: pip install llama-index-embeddings-jinaai"
+            )
+        
+        api_key = getattr(self.config, "jina_api_key", None) or os.getenv("JINA_API_KEY")
+        return JinaEmbedding(
+            api_key=api_key,
+            model=self.model_name
+        )
+    
+    def validate_config(self) -> None:
+        api_key = getattr(self.config, "jina_api_key", None) or os.getenv("JINA_API_KEY")
+        if not api_key:
+            raise ConfigurationError(
+                "JINA_API_KEY is required for Jina embedding provider. "
+                "Get a free API key at https://jina.ai/"
+            )
+    
+    @property
+    def chunk_size(self) -> int:
+        return self.CHUNK_SIZE
+    
+    @property
+    def model_name(self) -> str:
+        return getattr(self.config, "jina_embedding_model", self.DEFAULT_MODEL)
+    
+    def get_max_chunk_size(self) -> int:
+        return self.CHUNK_SIZE
+
 class EmbeddingProviderFactory:
     """
     Factory for creating and caching embedding provider instances.
@@ -160,11 +206,13 @@ class EmbeddingProviderFactory:
         "openai": OpenAIEmbeddingProvider,
         "gemini": GeminiEmbeddingProvider,
         "opensource": OpenSourceEmbeddingProvider,
+        "jina": JinaEmbeddingProvider,
     }
     _chunk_size_map: Dict[str, int] = {
         "openai": 1024,
         "gemini": 1024,
         "opensource": 512,
+        "jina": 8192,
     }
     _instance_cache: Dict[str, EmbeddingProvider] = {}
 
