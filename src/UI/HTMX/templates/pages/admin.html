@@ -12,8 +12,8 @@
                 <!-- Project List -->
                 <div class="card">
                     <h2>Projects</h2>
-                    <div id="projects-container">
-                        <div class="loading">No projects found.</div>
+                    <div id="projects-container" hx-get="{{ url_for('api_get_projects') }}" hx-trigger="load" hx-swap="innerHTML">
+                        <div class="loading">Loading projects...</div>
                     </div>
                 </div>
 
@@ -76,6 +76,11 @@
             if (event.detail.xhr.status === 200) {
                 console.log('[admin] Project created successfully, clearing form');
                 document.getElementById('create-project-form').reset();
+                // Reload projects after creation
+                const container = document.getElementById('projects-container');
+                if (container) {
+                    htmx.ajax('GET', '{{ url_for("api_get_projects") }}', {target: container, swap: 'innerHTML'});
+                }
             }
         }
 
@@ -87,38 +92,6 @@
                     console.log('[admin] Form submit event intercepted');
                     // Let HTMX handle it - don't prevent default
                 });
-            }
-        });
-
-        // These functions are page-specific and not in global scope
-        function loadProjects() {
-            const container = document.getElementById('projects-container');
-            if (!container) {
-                console.warn('[admin] projects-container not found');
-                return;
-            }
-            console.log('[admin] Loading projects...');
-            fetch('{{ url_for("api_get_projects") }}')
-                .then(response => response.text())
-                .then(html => {
-                    console.log('[admin] Projects loaded');
-                    container.innerHTML = html;
-                })
-                .catch(error => {
-                    console.error('Error loading projects:', error);
-                    container.innerHTML = '<div class="error">Failed to load projects</div>';
-                });
-        }
-
-        // Load projects when page is loaded
-        console.log('[admin] Script executed');
-        loadProjects();
-        
-        // Also listen to the custom pageLoaded event
-        document.addEventListener('pageLoaded', function(e) {
-            if (e.detail && e.detail.url && e.detail.url.includes('/admin')) {
-                console.log('[admin] pageLoaded event received');
-                loadProjects();
             }
         });
     </script>
