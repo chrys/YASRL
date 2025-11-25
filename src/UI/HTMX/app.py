@@ -453,6 +453,23 @@ def api_get_projects():
         return render_template('components/projects_list.html', projects=[], error=str(e))
 
 
+@app.route('/api/projects/list', methods=['GET'])
+def api_get_projects_json():
+    """Retrieve all projects as JSON for use in dropdowns."""
+    if not db_connection:
+        return jsonify({'success': False, 'projects': [], 'error': 'Database not connected'}), 500
+    
+    try:
+        projects_df = get_projects(db_connection)
+        projects = projects_df.to_dict('records') if len(projects_df) > 0 else []
+        # Convert to simple format for dropdown
+        projects_list = [{'id': p['id'], 'name': p['name']} for p in projects]
+        return jsonify({'success': True, 'projects': projects_list})
+    except Exception as e:
+        logger.error(f"Error retrieving projects: {e}")
+        return jsonify({'success': False, 'projects': [], 'error': str(e)}), 500
+
+
 @app.route('/api/projects/create', methods=['POST'])
 def api_create_project():
     """Create a new project."""

@@ -127,35 +127,26 @@
 
         // Load projects from database
         function loadProjectsForEvaluation() {
-            fetch(getBuildUrl()('api/projects'))
-                .then(response => response.text())
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const projectItems = doc.querySelectorAll('.project-item');
-                    
+            fetch(getBuildUrl()('api/projects/list'))
+                .then(response => response.json())
+                .then(data => {
                     const projectSelect = document.getElementById('eval-project-select');
                     const noProjectsMsg = document.getElementById('no-projects-eval');
                     
                     // Clear existing options (except the placeholder)
                     projectSelect.innerHTML = '<option value="">-- Select a project --</option>';
                     
-                    if (projectItems.length === 0) {
+                    if (!data.success || data.projects.length === 0) {
                         noProjectsMsg.style.display = 'block';
                         document.getElementById('sources-card').style.display = 'none';
                         document.getElementById('add-qa-card').style.display = 'none';
                     } else {
                         noProjectsMsg.style.display = 'none';
-                        projectItems.forEach(item => {
-                            const projectName = item.querySelector('.project-name')?.textContent.trim() || 'Unknown';
-                            const projectId = item.getAttribute('data-project-id');
-                            
-                            if (projectId && projectName) {
-                                const option = document.createElement('option');
-                                option.value = projectId;
-                                option.textContent = projectName;
-                                projectSelect.appendChild(option);
-                            }
+                        data.projects.forEach(project => {
+                            const option = document.createElement('option');
+                            option.value = project.id;
+                            option.textContent = project.name;
+                            projectSelect.appendChild(option);
                         });
                     }
                 })
