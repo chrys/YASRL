@@ -29,6 +29,10 @@ class ConfigurationManager:
         self._config_cache: Optional[AdvancedConfig] = None
 
     def _find_config_file(self, config_file: Optional[Union[str, Path]]) -> Optional[Path]:
+        # Disable config file search to avoid permission issues in production
+        # All configuration should come from environment variables
+        return None
+        
         if config_file:
             path = Path(config_file)
             if not path.exists():
