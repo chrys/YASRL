@@ -38,16 +38,16 @@
 </section>
 
 <script>
-    // Get base path from parent document
-    const basePath = document.documentElement.getAttribute('data-base-path') || '';
-    
-    // Helper function to build URLs with base path
-    function buildUrl(path) {
-        if (basePath && !path.startsWith('/')) {
-            return basePath + '/' + path;
+    // Use global basePath and buildUrl from app.js (avoid redeclaration)
+    // If not available yet, fall back to getting from DOM
+    const getBasePath = () => window.basePath || document.documentElement.getAttribute('data-base-path') || '';
+    const getBuildUrl = () => window.buildUrl || ((path) => {
+        const bp = getBasePath();
+        if (bp && !path.startsWith('/')) {
+            return bp + '/' + path;
         }
         return path;
-    }
+    });
 
     // Global chat state
     let chatHistory = [];
@@ -57,7 +57,7 @@
     function initializeChatPage() {
         loadProjectsForChat();
         setupChatListeners();
-        console.log('[CHAT] Page initialized, basePath:', basePath);
+        console.log('[CHAT] Page initialized, basePath:', getBasePath());
     }
 
     // Load projects on page load (both initial and HTMX dynamic load)
@@ -74,7 +74,7 @@
 
     // Load projects from database
     function loadProjectsForChat() {
-        fetch(buildUrl('api/projects'))
+        fetch(getBuildUrl()('api/projects'))
             .then(response => response.text())
             .then(html => {
                 const parser = new DOMParser();
@@ -181,7 +181,7 @@
         scrollToBottom();
         
         // Call backend API
-        fetch(buildUrl('api/chat/send'), {
+        fetch(getBuildUrl()('api/chat/send'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

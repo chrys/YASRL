@@ -6,6 +6,9 @@
 // Get base path from HTML data attribute (set by Flask's request.script_root)
 const basePath = document.documentElement.getAttribute('data-base-path') || '';
 
+// Export to global scope for use in dynamically loaded pages
+window.basePath = basePath;
+
 // Helper function to build URLs with base path
 function buildUrl(path) {
     // If path already starts with base path, return as is
@@ -19,6 +22,9 @@ function buildUrl(path) {
     // Otherwise return path as is
     return path;
 }
+
+// Export to global scope for use in dynamically loaded pages
+window.buildUrl = buildUrl;
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('[APP] DOMContentLoaded, basePath:', basePath);
