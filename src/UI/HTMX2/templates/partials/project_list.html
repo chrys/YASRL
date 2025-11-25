@@ -10,8 +10,9 @@
                         <span class="text-xs text-gray-500">ID: {{ project.id }} | LLM: {{ project.llm }}</span>
                     </div>
                     <!-- Delete button -->
-                    <button hx-delete="/projects/{{ project.name | urlencode }}" hx-target="#project-list"
-                        hx-swap="innerHTML" hx-confirm="Are you sure you want to delete project '{{ project.name }}'?"
+                    <button hx-delete="{{ request.url_for('delete_project', project_name=project.name) }}"
+                        hx-target="#project-list" hx-swap="innerHTML"
+                        hx-confirm="Are you sure you want to delete project '{{ project.name }}'?"
                         class="text-red-600 hover:text-red-900 text-sm font-medium">
                         Delete
                     </button>
@@ -20,8 +21,8 @@
                 <!-- Indexed Sources -->
                 <div class="mt-2 pl-4 border-l-2 border-gray-200">
                     <div class="text-xs font-semibold text-gray-600 mb-1">Indexed Sources:</div>
-                    <div hx-get="/projects/{{ project.name | urlencode }}/sources" hx-trigger="load" hx-swap="innerHTML"
-                        class="text-xs text-gray-500">
+                    <div hx-get="{{ request.url_for('get_project_sources', project_name=project.name) }}"
+                        hx-trigger="load" hx-swap="innerHTML" class="text-xs text-gray-500">
                         Loading sources...
                     </div>
                 </div>
