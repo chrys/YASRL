@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white shadow overflow-hidden sm:rounded-lg p-6 h-[80vh] flex flex-col">
+    <h1 class="text-2xl font-bold mb-6">Chat</h1>
+
+    <div class="mb-4">
+        <label for="project_select" class="block text-sm font-medium text-gray-700">Select Project</label>
+        <select name="project_name" id="project_select"
+            class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border">
+            {% if projects %}
+            {% for project in projects %}
+            <option value="{{ project.name }}">{{ project.name }}</option>
+            {% endfor %}
+            {% else %}
+            <option value="">No projects available</option>
+            {% endif %}
+        </select>
+    </div>
+
+    <div id="chat-history" class="flex-1 overflow-y-auto mb-4 border rounded-md p-4 bg-gray-50 space-y-4">
+        <!-- Chat messages will appear here -->
+        <div class="text-center text-gray-500 text-sm">Select a project and start chatting!</div>
+    </div>
+
+    <form id="chat-form" hx-post="/chat/message" hx-target="#chat-history" hx-swap="beforeend"
+        hx-indicator="#loading-indicator" class="flex gap-2">
+        <input type="hidden" name="project_name" id="project_name_input">
+        <input type="text" name="message" id="message_input"
+            class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm border p-2"
+            placeholder="Type your message and press Enter...">
+        <button type="submit"
+            class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+            Send
+        </button>
+    </form>
+
+    <!-- Loading indicator -->
+    <div id="loading-indicator" class="htmx-indicator mt-2 flex items-center justify-center text-indigo-600">
+        <svg class="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+            </path>
+        </svg>
+        <span class="text-sm font-medium">Thinking...</span>
+    </div>
+
+    <script>
+        // Sync select value to hidden input
+        const select = document.getElementById('project_select');
+        const hiddenInput = document.getElementById('project_name_input');
+        const messageInput = document.getElementById('message_input');
+        const chatForm = document.getElementById('chat-form');
+
+        if (select.value) {
+            hiddenInput.value = select.value;
+        }
+
+        select.addEventListener('change', (e) => {
+            hiddenInput.value = e.target.value;
+            // Clear chat history on change
+            document.getElementById('chat-history').innerHTML = '<div class="text-center text-gray-500 text-sm">Switched to project: ' + e.target.value + '</div>';
+        });
+
+        // Handle Enter key submission
+        messageInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                chatForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
+        });
+
+        // Clear input after sending and scroll to bottom
+        document.body.addEventListener('htmx:afterRequest', function (e) {
+            if (e.detail.successful && e.detail.target.id === 'chat-history') {
+                messageInput.value = '';
+                // Scroll to bottom of chat history
+                const chatHistory = document.getElementById('chat-history');
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+            }
+        });
+    </script>
+</div>
+
+<style>
+    .htmx-indicator {
+        display: none;
+    }
+
+    .htmx-request .htmx-indicator {
+        display: flex;
+    }
+</style>
+{% endblock %}

@@ -63,33 +63,22 @@
         }
         
         chatPageInitialized = true;
+        console.log('[CHAT] Initializing chat page, basePath:', getBasePath());
         loadProjectsForChat();
         setupChatListeners();
-        console.log('[CHAT] Page initialized, basePath:', getBasePath());
     }
 
-    // Load projects on page load (both initial and HTMX dynamic load)
-    // Use a single approach: DOMContentLoaded for initial load
-    document.addEventListener('DOMContentLoaded', function() {
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeChatPage);
-        } else {
-            initializeChatPage();
-        }
-    });
-    
-    // Also initialize when HTMX loads the page
-    document.addEventListener('pageLoaded', function(e) {
-        if (e.detail && e.detail.url && e.detail.url.includes('/chat')) {
-            // Reset flag when returning to chat page
-            chatPageInitialized = false;
-            initializeChatPage();
-        }
-    });
+    // Initialize immediately since HTMX has already loaded the content
+    // This script runs after the DOM elements are inserted
+    console.log('[CHAT] Script loaded, initializing...');
+    // Use setTimeout to ensure DOM is fully settled
+    setTimeout(() => {
+        initializeChatPage();
+    }, 0);
 
     // Load projects from database
     function loadProjectsForChat() {
-        fetch(getBuildUrl()('api/projects/list'))
+        fetch(getBuildUrl()('/api/projects/list'))
             .then(response => response.json())
             .then(data => {
                 const projectSelect = document.getElementById('project-select');
@@ -187,7 +176,7 @@
         scrollToBottom();
         
         // Call backend API
-        fetch(getBuildUrl()('api/chat/send'), {
+        fetch(getBuildUrl()('/api/chat/send'), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'

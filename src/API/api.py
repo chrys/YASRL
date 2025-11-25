@@ -11,14 +11,14 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 
-from .pipeline import RAGPipeline
-from .models import QueryResult
-from .exceptions import ConfigurationError, IndexingError, RetrievalError
+from .crud import PipelineService
+from yasrl.models import QueryResult
+from yasrl.exceptions import ConfigurationError, IndexingError, RetrievalError
 
 logger = logging.getLogger(__name__)
 
-# Global pipeline storage
-pipelines: Dict[str, RAGPipeline] = {}
+# Global service instance
+pipeline_service = PipelineService()
 
 class PipelineCreateRequest(BaseModel):
     """Request model for creating a new RAG pipeline."""
@@ -62,13 +62,7 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("Shutting down YASRL API server...")
     # Cleanup all pipelines
-    for pipeline_id, pipeline in pipelines.items():
-        try:
-            if hasattr(pipeline, 'cleanup'):
-                await pipeline.cleanup()
-            logger.info(f"Cleaned up pipeline {pipeline_id}")
-        except Exception as e:
-            logger.error(f"Error cleaning up pipeline {pipeline_id}: {e}")
+    await pipeline_service.cleanup_all()
 
 app = FastAPI(
     title="YASRL RAG API",
@@ -81,12 +75,6 @@ app = FastAPI(
     openapi_url="/openapi.json"
 )
 
-def get_pipeline(pipeline_id: str) -> RAGPipeline:
-    """Dependency to get a pipeline by ID."""
-    if pipeline_id not in pipelines:
-        raise HTTPException(status_code=404, detail=f"Pipeline {pipeline_id} not found")
-    return pipelines[pipeline_id]
-
 @app.post("/pipelines", response_model=PipelineCreateResponse)
 async def create_pipeline(request: PipelineCreateRequest):
     """
@@ -96,20 +84,11 @@ async def create_pipeline(request: PipelineCreateRequest):
     Returns a unique pipeline ID that can be used for subsequent operations.
     """
     try:
-        # Generate unique pipeline ID
-        pipeline_id = str(uuid.uuid4())
-        
-        # Create the pipeline
-        logger.info(f"Creating pipeline {pipeline_id} with llm={request.llm}, embed_model={request.embed_model}")
-        pipeline = await RAGPipeline.create(
+        pipeline_id = await pipeline_service.create_pipeline(
             llm=request.llm,
             embed_model=request.embed_model
         )
         
-        # Store the pipeline
-        pipelines[pipeline_id] = pipeline
-        
-        logger.info(f"Successfully created pipeline {pipeline_id}")
         return PipelineCreateResponse(
             pipeline_id=pipeline_id,
             message=f"Pipeline created successfully with ID: {pipeline_id}"
@@ -129,16 +108,15 @@ async def index_documents(pipeline_id: str, request: IndexRequest):
     
     Loads and indexes documents from the specified source into the pipeline's vector store.
     """
-    pipeline = get_pipeline(pipeline_id)
-    
     try:
-        logger.info(f"Indexing source '{request.source}' in pipeline {pipeline_id}")
-        await pipeline.index(request.source, project_id=None)
+        await pipeline_service.index_source(pipeline_id, request.source)
         
         return IndexResponse(
             message=f"Successfully indexed source: {request.source}"
         )
         
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except IndexingError as e:
         logger.error(f"Indexing error in pipeline {pipeline_id}: {e}")
         raise HTTPException(status_code=400, detail=f"Indexing error: {str(e)}")
@@ -153,11 +131,9 @@ async def ask_question(pipeline_id: str, request: QueryRequest):
     
     Processes the query through the RAG pipeline and returns an answer with source information.
     """
-    pipeline = get_pipeline(pipeline_id)
-    
     try:
-        logger.info(f"Processing query in pipeline {pipeline_id}: {request.query}")
-        result = await pipeline.ask(
+        result = await pipeline_service.ask(
+            pipeline_id=pipeline_id,
             query=request.query,
             conversation_history=request.conversation_history
         )
@@ -176,6 +152,8 @@ async def ask_question(pipeline_id: str, request: QueryRequest):
             source_chunks=source_chunks
         )
         
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except RetrievalError as e:
         logger.error(f"Retrieval error in pipeline {pipeline_id}: {e}")
         raise HTTPException(status_code=400, detail=f"Retrieval error: {str(e)}")
@@ -190,12 +168,12 @@ async def get_pipeline_stats(pipeline_id: str):
     
     Returns information about the pipeline such as the number of indexed documents.
     """
-    pipeline = get_pipeline(pipeline_id)
-    
     try:
-        stats = await pipeline.get_statistics()
+        stats = await pipeline_service.get_stats(pipeline_id)
         return PipelineStatsResponse(**stats)
         
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error getting stats for pipeline {pipeline_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -207,16 +185,16 @@ async def check_pipeline_health(pipeline_id: str):
     
     Returns the health status of the pipeline's database connection.
     """
-    pipeline = get_pipeline(pipeline_id)
-    
     try:
-        is_healthy = await pipeline.health_check()
+        is_healthy = await pipeline_service.health_check(pipeline_id)
         return {
             "pipeline_id": pipeline_id,
             "healthy": is_healthy,
             "status": "healthy" if is_healthy else "unhealthy"
         }
         
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error checking health for pipeline {pipeline_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -228,16 +206,12 @@ async def delete_pipeline(pipeline_id: str):
     
     Removes the pipeline from memory and cleans up database connections.
     """
-    pipeline = get_pipeline(pipeline_id)
-    
     try:
-        if hasattr(pipeline, 'cleanup'):
-            await pipeline.cleanup()
-        del pipelines[pipeline_id]
-        
-        logger.info(f"Successfully deleted pipeline {pipeline_id}")
+        await pipeline_service.delete_pipeline(pipeline_id)
         return {"message": f"Pipeline {pipeline_id} deleted successfully"}
         
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(f"Error deleting pipeline {pipeline_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
@@ -249,8 +223,9 @@ async def list_pipelines():
     
     Returns a list of all currently active pipeline IDs.
     """
+    pipelines = pipeline_service.list_pipelines()
     return {
-        "pipelines": list(pipelines.keys()),
+        "pipelines": pipelines,
         "count": len(pipelines)
     }
 
@@ -262,6 +237,7 @@ async def healthz():
 @app.get("/")
 async def root():
     """Root endpoint with API information."""
+    pipelines = pipeline_service.list_pipelines()
     return {
         "message": "YASRL RAG API",
         "version": "1.0.0",

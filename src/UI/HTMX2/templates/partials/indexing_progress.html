@@ -1,0 +1,39 @@
+<div id="indexing-{{ tracking_id }}" hx-ext="sse" sse-connect="/indexing/progress/{{ tracking_id }}"
+    class="mt-4 p-4 border rounded bg-gray-50">
+    <div class="mb-2 font-medium">Indexing: {{ source }}</div>
+    <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+        <div id="progress-bar-{{ tracking_id }}" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+            style="width: 0%"></div>
+    </div>
+    <div class="mt-2 text-sm text-gray-600">
+        Progress: <span id="progress-text-{{ tracking_id }}">0</span>%
+    </div>
+</div>
+
+<script>
+    (function () {
+        const container = document.getElementById('indexing-{{ tracking_id }}');
+        const progressBar = document.getElementById('progress-bar-{{ tracking_id }}');
+        const progressText = document.getElementById('progress-text-{{ tracking_id }}');
+
+        container.addEventListener('htmx:sseMessage', function (e) {
+            const data = e.detail.data;
+
+            if (data) {
+                const progress = parseInt(data);
+                if (progressBar) progressBar.style.width = progress + '%';
+                if (progressText) progressText.innerText = progress;
+
+                if (progress >= 100) {
+                    setTimeout(() => {
+                        container.innerHTML = '<div class="text-green-600 font-medium">✓ Indexing Complete!</div>';
+                    }, 500);
+                }
+            }
+        });
+
+        container.addEventListener('htmx:sseError', function (e) {
+            container.innerHTML = '<div class="text-red-600 font-medium">✗ Indexing Failed</div>';
+        });
+    })();
+</script>
