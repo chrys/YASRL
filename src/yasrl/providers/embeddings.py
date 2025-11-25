@@ -1,8 +1,18 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Type
+from typing import Any, Dict, Type, Optional
 from yasrl.exceptions import ConfigurationError
-from llama_index.embeddings.gemini import GeminiEmbedding
-import os 
+import os
+
+# Try to import GeminiEmbedding - it may require sentence-transformers
+try:
+    from llama_index.embeddings.gemini import GeminiEmbedding
+    GEMINI_AVAILABLE = True
+except ImportError as e:
+    GEMINI_AVAILABLE = False
+    GeminiEmbedding = None
+    import logging
+    logging.getLogger(__name__).warning(f"GeminiEmbedding not available: {e}")
+ 
 
 class EmbeddingProvider(ABC):
     """
@@ -82,6 +92,12 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
 
     def get_embedding_model(self) -> Any:
         # Return actual LlamaIndex Gemini embedding instance
+        if not GEMINI_AVAILABLE or GeminiEmbedding is None:
+            raise ConfigurationError(
+                "GeminiEmbedding is not available. This may be due to missing dependencies like sentence-transformers. "
+                "Please use a different embedding provider or install the required dependencies."
+            )
+        
         api_key = getattr(self.config, "google_api_key", None) or os.getenv("GOOGLE_API_KEY")
         return GeminiEmbedding(
             model_name=self.model_name,
@@ -89,6 +105,11 @@ class GeminiEmbeddingProvider(EmbeddingProvider):
         )
 
     def validate_config(self) -> None:
+        if not GEMINI_AVAILABLE:
+            raise ConfigurationError(
+                "GeminiEmbedding is not available. This may be due to missing dependencies. "
+                "Please use a different embedding provider."
+            )
         api_key = getattr(self.config, "google_api_key", None) or os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ConfigurationError("GOOGLE_API_KEY is required for Gemini embedding provider.")
