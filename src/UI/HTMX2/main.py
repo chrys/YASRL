@@ -65,18 +65,24 @@ async def create_pipeline(request: Request, name: str = Form(...), llm: str = Fo
 @app.delete("/projects/{project_name}", response_class=HTMLResponse)
 async def delete_project(request: Request, project_name: str):
     try:
-        pipeline_service.delete_project_from_db(project_name)
+        from urllib.parse import unquote
+        decoded_name = unquote(project_name)
+        logger.info(f"Deleting project: {decoded_name}")
+        pipeline_service.delete_project_from_db(decoded_name)
         # Return updated list
         projects = pipeline_service.list_projects_from_db()
         return templates.TemplateResponse("partials/project_list.html", {"request": request, "projects": projects})
     except Exception as e:
-        logger.error(f"Error deleting project: {e}")
+        logger.error(f"Error deleting project: {e}", exc_info=True)
         return HTMLResponse(f"<div class='text-red-500'>Error: {e}</div>")
 
 @app.get("/projects/{project_name}/sources", response_class=HTMLResponse)
 async def get_project_sources(request: Request, project_name: str):
     try:
-        sources = pipeline_service.get_project_sources_from_db(project_name)
+        from urllib.parse import unquote
+        decoded_name = unquote(project_name)
+        logger.info(f"Getting sources for project: {decoded_name}")
+        sources = pipeline_service.get_project_sources_from_db(decoded_name)
         if sources:
             sources_html = "<ul class='list-disc list-inside'>"
             for source in sources:
@@ -86,7 +92,7 @@ async def get_project_sources(request: Request, project_name: str):
         else:
             return HTMLResponse("<span class='text-gray-400'>No sources indexed yet</span>")
     except Exception as e:
-        logger.error(f"Error getting sources: {e}")
+        logger.error(f"Error getting sources: {e}", exc_info=True)
         return HTMLResponse("<span class='text-red-400'>Error loading sources</span>")
 
 @app.post("/chat/message", response_class=HTMLResponse)
