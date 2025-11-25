@@ -376,7 +376,7 @@ function removeSource(projectId, source) {
 }
 
 function selectProject(projectId) {
-    fetch(`/api/projects/${projectId}/details`)
+    fetch(`api/projects/${projectId}/details`)
         .then(response => response.text())
         .then(html => {
             document.getElementById('project-details-container').innerHTML = html;

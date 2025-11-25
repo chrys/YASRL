@@ -69,28 +69,8 @@ server {
                 proxy_set_header Connection "upgrade";
         }
 
-	# YASRL API (FastAPI) - MUST come before /my_chatbot2/ for correct routing
-	location /my_chatbot2/api/ {
-    		proxy_pass http://unix:/run/yasrl-api/yasrl-api.sock;
-    		proxy_set_header Host $host;
-    		proxy_set_header X-Real-IP $remote_addr;
-    		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    		proxy_set_header X-Forwarded-Proto $scheme;
-    		proxy_set_header X-Forwarded-Prefix /my_chatbot2/api;
-    		proxy_set_header Upgrade $http_upgrade;
-    		proxy_set_header Connection "upgrade";
-    
-    		proxy_connect_timeout 300s;
-    		proxy_send_timeout 300s;
-    		proxy_read_timeout 300s;
-    
-    		proxy_buffering on;
-    		proxy_buffer_size 128k;
-    		proxy_buffers 4 256k;
-    		proxy_busy_buffers_size 256k;
-	}
-
 	# YASRL UI (Flask) - WITH REWRITE to strip prefix
+	# Handles ALL /my_chatbot2/ routes including /api/ endpoints (they're all Flask endpoints)
 	location /my_chatbot2/ {
     		rewrite ^/my_chatbot2/(.*)$ /$1 break;
     		rewrite ^/my_chatbot2/?$ / break;
