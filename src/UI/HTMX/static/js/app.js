@@ -3,8 +3,25 @@
  * Handles page transitions and active state management
  */
 
+// Get base path from HTML data attribute (set by Flask's request.script_root)
+const basePath = document.documentElement.getAttribute('data-base-path') || '';
+
+// Helper function to build URLs with base path
+function buildUrl(path) {
+    // If path already starts with base path, return as is
+    if (basePath && path.startsWith(basePath)) {
+        return path;
+    }
+    // If basePath is set and path doesn't start with /, add it
+    if (basePath && !path.startsWith('/')) {
+        return basePath + '/' + path;
+    }
+    // Otherwise return path as is
+    return path;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('[APP] DOMContentLoaded');
+    console.log('[APP] DOMContentLoaded, basePath:', basePath);
     initializeApp();
 });
 
@@ -223,7 +240,7 @@ function pollIndexingProgress(projectId, trackingIds, indexingContainer, statusM
         
         // Check all tracking IDs
         Promise.all(trackingIds.map(trackingId => 
-            fetch(`/api/indexing/progress/${trackingId}`)
+            fetch(buildUrl(`api/indexing/progress/${trackingId}`))
                 .then(r => r.json())
                 .catch(() => ({ status: 'unknown' }))
         ))
@@ -326,14 +343,14 @@ function showWarning(element, message) {
 
 function deleteProject(projectId, projectName) {
     if (confirm(`Are you sure you want to delete "${projectName}"? This will also delete all its sources.`)) {
-        fetch(`/api/projects/${projectId}/delete`, { method: 'DELETE' })
+        fetch(buildUrl(`api/projects/${projectId}/delete`), { method: 'DELETE' })
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
                     // Reload projects list
                     const container = document.getElementById('projects-container');
                     if (container) {
-                        fetch('/api/projects')
+                        fetch(buildUrl('api/projects'))
                             .then(response => response.text())
                             .then(html => {
                                 container.innerHTML = html;
@@ -376,7 +393,7 @@ function removeSource(projectId, source) {
 }
 
 function selectProject(projectId) {
-    fetch(`api/projects/${projectId}/details`)
+    fetch(buildUrl(`api/projects/${projectId}/details`))
         .then(response => response.text())
         .then(html => {
             document.getElementById('project-details-container').innerHTML = html;
