@@ -20,7 +20,7 @@
                 <!-- Create New Project -->
                 <div class="card">
                     <h2>Create New Project</h2>
-                    <form id="create-project-form" method="POST" hx-post="/api/projects/create" hx-target="#projects-container" hx-swap="innerHTML" hx-on::after-request="clearFormOnSuccess(event)">
+                    <form id="create-project-form" method="POST" hx-post="{{ url_for('api_create_project') }}" hx-target="#projects-container" hx-swap="innerHTML" hx-on::after-request="clearFormOnSuccess(event)">
                         <div class="form-group">
                             <label for="project-name">Project Name *</label>
                             <input type="text" id="project-name" name="name" required placeholder="e.g., My RAG Project">
@@ -98,7 +98,7 @@
                 return;
             }
             console.log('[admin] Loading projects...');
-            fetch('/api/projects')
+            fetch('{{ url_for("api_get_projects") }}')
                 .then(response => response.text())
                 .then(html => {
                     console.log('[admin] Projects loaded');
